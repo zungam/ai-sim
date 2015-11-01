@@ -1,0 +1,4 @@
+build/*.obj
+build/*.exe
+build/*.manifest
+build/*.pdb
