@@ -10,6 +10,9 @@ typedef int32_t     s32;
 typedef int16_t     s16;
 typedef int8_t      s08;
 
+#define global static
+#define persist static
+
 struct VideoMode
 {
     int width;
