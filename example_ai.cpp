@@ -1,15 +1,14 @@
-// This illustrates how you might
-
+#define SIM_CLIENT_CODE
 #include "simulator.h"
 #include <stdio.h>
 int main(int argc, char **argv)
 {
-    // The second parameter specifies whether or not
+    // The boolean parameter specifies whether or not
     // we want the socket to be non-blocking. A blocking
     // socket will stall the calling thread until a packet
     // is available. Here I open a blocking socket, which
     // prevents the loop below from burning cycles.
-    udp_open(12345, false);
+    sim_init_msgs(false);
 
     // In your application you probably want to use
     // non-blocking sockets and poll once per roll
@@ -19,7 +18,7 @@ int main(int argc, char **argv)
     // while (running)
     //     state_updated = false
     //     State state
-    //     if (udp_recv(state))
+    //     if (sim_recv(state))
     //         latest_data = state
     //         // Process new data if you need to
     //
@@ -33,17 +32,28 @@ int main(int argc, char **argv)
 
     while (1)
     {
-        Robot data = {};
-        udp_addr sender = {};
+        SimulationState state = {};
+        if (sim_recv_state(&state))
+        {
+            printf("Got a state update!\n");
+            printf("-------------------\n");
 
-        udp_recv((char*)&data, sizeof(Robot), &sender);
-        printf("Received data from %d.%d.%d.%d:%d\n",
-               sender.ip0, sender.ip1, sender.ip2, sender.ip3, sender.port);
+            printf("elapsed_sim_time = %.2f\n", state.elapsed_sim_time);
+            printf("drone (x y z) = (%.2f %.2f %.2f)\n",
+                   state.drone.x, state.drone.y, state.drone.z);
 
-        printf("%.2f %.2f %.2f %.2f %.2f\n",
-               data.x, data.y, data.q, data.vl, data.vr);
+            for (int i = 0; i < Num_Targets; i++)
+            {
+                printf("targets[%d] (x y q vl vr) = (%.2f %.2f %.2f %.2f %.2f)\n", i, state.targets[i].x, state.targets[i].y, state.targets[i].q, state.targets[i].vl, state.targets[i].vr);
+            }
 
-        printf("\n");
+            for (int i = 0; i < Num_Obstacles; i++)
+            {
+                printf("obstacles[%d] (x y q vl vr) = (%.2f %.2f %.2f %.2f %.2f)\n", i, state.obstacles[i].x, state.obstacles[i].y, state.obstacles[i].q, state.obstacles[i].vl, state.obstacles[i].vr);
+            }
+
+            printf("\n\n");
+        }
     }
 
     udp_close();

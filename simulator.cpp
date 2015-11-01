@@ -1,7 +1,6 @@
 #include "platform.h"
 #include "simulator.h"
 #include "SDL_opengl.h"
-
 #include <stdio.h>
 #include <math.h>
 
@@ -87,7 +86,7 @@ sim_init(VideoMode mode)
     printf("multisamples: %d\n", mode.multisamples);
     printf("swap_interval: %d\n", mode.swap_interval);
 
-    udp_open(20073, true);
+    sim_init_msgs(true);
 }
 
 void
@@ -99,14 +98,31 @@ sim_tick(VideoMode mode, float t, float dt)
     if (udp_send_timer <= 0.0f)
     {
         udp_send_timer = 1.0f;
-        Robot test_robot = {};
-        test_robot.x = 1.1f;
-        test_robot.y = 2.2f;
-        test_robot.q = 3.3f;
-        test_robot.vl = 4.4f;
-        test_robot.vr = 5.5f;
-        udp_addr dst = { 127, 0, 0, 1, 12345 };
-        udp_send((char*)&test_robot, sizeof(test_robot), dst);
+        SimulationState test_state = {};
+        test_state.elapsed_sim_time = t;
+        test_state.drone.x = 1.0f;
+        test_state.drone.y = 2.0f;
+        test_state.drone.z = 3.0f;
+
+        for (u32 i = 0; i < Num_Targets; i++)
+        {
+            test_state.targets[i].x = (r32)i;
+            test_state.targets[i].y = (r32)(i+2);
+            test_state.targets[i].q = 0.1f;
+            test_state.targets[i].vl = 0.2f;
+            test_state.targets[i].vr = 0.3f;
+        }
+
+        for (u32 i = 0; i < Num_Obstacles; i++)
+        {
+            test_state.obstacles[i].x = (r32)i * 4.0f;
+            test_state.obstacles[i].y = 10.0f;
+            test_state.obstacles[i].q = 0.3f;
+            test_state.obstacles[i].vl = 0.2f;
+            test_state.obstacles[i].vr = 0.3f;
+        }
+
+        sim_send_state(&test_state);
     }
 
     set_scale(mode.width/(r32)mode.height, 1.0f);
