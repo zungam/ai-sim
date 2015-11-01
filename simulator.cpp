@@ -92,6 +92,21 @@ sim_init(VideoMode mode)
 void
 sim_tick(VideoMode mode, float t, float dt)
 {
+    // As a test, let the client set these variables
+    // which control where the worm is centered.
+    persist r32 worm_track_x = 0.0f;
+    persist r32 worm_track_y = -0.2f;
+
+    DroneCmd cmd = {};
+    if (sim_recv_cmd(&cmd))
+    {
+        if (cmd.type == DroneCmdType_Goto)
+        {
+            worm_track_x = cmd.x;
+            worm_track_y = cmd.y;
+        }
+    }
+
     // Send a test package once per second
     persist r32 udp_send_timer = 1.0f;
     udp_send_timer -= dt;
@@ -138,9 +153,12 @@ sim_tick(VideoMode mode, float t, float dt)
     {
         set_color(1.0f, 0.5f, 0.3f, 1.0f);
         for (u32 i = 0; i < 32; i++)
-            draw_circle(0.2f*cos(1.0f*t + i / 15.0f),
-                        -0.2f+0.3f*sin(1.2f*t + i / 15.0f),
-                        0.3f + i / 300.0f);
+        {
+            float x = worm_track_x + 0.2f * cos(t + i / 15.0f);
+            float y = worm_track_y + 0.3f * sin(1.2f * t + i / 15.0f);
+            float r = 0.3f + i / 300.0f;
+            draw_circle(x, y, r);
+        }
 
         u32 wn = 4;
         for (u32 wave = 0; wave < wn; wave++)

@@ -1,11 +1,13 @@
 #ifndef _simulator_h_
 #define _simulator_h_
+#define SIM_CLIENT_LISTEN_PORT 22334
+#define SIM_SERVER_LISTEN_PORT 22335
 #ifdef SIM_CLIENT_CODE
-#define RECV_PORT 22334
-#define SEND_PORT 22335
+#define RECV_PORT SIM_CLIENT_LISTEN_PORT
+#define SEND_PORT SIM_SERVER_LISTEN_PORT
 #else
-#define RECV_PORT 22335
-#define SEND_PORT 22334
+#define RECV_PORT SIM_SERVER_LISTEN_PORT
+#define SEND_PORT SIM_CLIENT_LISTEN_PORT
 #endif
 
 // The simulator uses UDP packets for interprocess
@@ -21,10 +23,15 @@
 // and include this file.
 
 // The functions
-//  sim_init_msgs
-//  sim_recv_state
-//  sim_send_cmd
+//  - sim_init_msgs
+//  - sim_recv_state
+//  - sim_send_cmd
 // can be used to communicate with the simulator.
+
+// sim_recv_state will read as many packets as are
+// available to acquire the latest one. This is to
+// avoid the pipes clogging up if your loop is
+// slower than the sending rate.
 
 // For example usage, see example_ai.cpp.
 
@@ -60,8 +67,8 @@ struct SimulationState
 // look like.
 enum DroneCmdType
 {
-    // land on the closest ground robot
-    DroneCmdType_TouchTop = 0,
+    // look around to observe robots
+    DroneCmdType_Search = 0,
 
     // go to a given position (x, y)
     DroneCmdType_Goto
@@ -86,14 +93,25 @@ bool sim_recv_state(SimulationState *result)
 {
     SimulationState state = {};
     uint32_t read_bytes = udp_recv((char*)&state, sizeof(SimulationState), 0);
-    if (read_bytes == sizeof(SimulationState))
+    if (read_bytes < sizeof(SimulationState))
     {
-        *result = state;
-        return true;
+        return false;
     }
     else
     {
-        return false;
+        // Read as many messages as are available to get
+        // the latest one.
+        *result = state;
+        bool reading = true;
+        while (reading)
+        {
+            read_bytes = udp_recv((char*)&state, sizeof(SimulationState), 0);
+            if (read_bytes)
+                *result = state;
+            else
+                reading = false;
+        }
+        return true;
     }
 }
 
@@ -107,14 +125,25 @@ bool sim_recv_cmd(DroneCmd *result)
 {
     DroneCmd cmd = {};
     uint32_t read_bytes = udp_recv((char*)&cmd, sizeof(DroneCmd), 0);
-    if (read_bytes == sizeof(DroneCmd))
+    if (read_bytes < sizeof(DroneCmd))
     {
-        *result = cmd;
-        return true;
+        return false;
     }
     else
     {
-        return false;
+        // Read as many messages as are available to get
+        // the latest one.
+        *result = cmd;
+        bool reading = true;
+        while (reading)
+        {
+            read_bytes = udp_recv((char*)&cmd, sizeof(DroneCmd), 0);
+            if (read_bytes)
+                *result = cmd;
+            else
+                reading = false;
+        }
+        return true;
     }
 }
 

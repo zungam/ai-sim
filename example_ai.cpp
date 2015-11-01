@@ -6,32 +6,15 @@ int main(int argc, char **argv)
     // The boolean parameter specifies whether or not
     // we want the socket to be non-blocking. A blocking
     // socket will stall the calling thread until a packet
-    // is available. Here I open a blocking socket, which
-    // prevents the loop below from burning cycles.
-    sim_init_msgs(false);
+    // is available. Here I open a non-blocking socket, which
+    // allows me to run on a loop without stalling for data.
+    sim_init_msgs(true);
 
-    // In your application you probably want to use
-    // non-blocking sockets and poll once per roll
-    // in your own main loop. Like so:
-
-    // State latest_state
-    // while (running)
-    //     state_updated = false
-    //     State state
-    //     if (sim_recv(state))
-    //         latest_data = state
-    //         // Process new data if you need to
-    //
-    //     // ... Your AI algorithm here ...
-    //
-
-    // If your main loop is running much slower than the
-    // send rate of packets, and you _need_ to process
-    // all the packets that are sent, then you will need
-    // to poll for and process packets on a seperate thread.
+    printf("%d\n", sizeof(SimulationState));
 
     while (1)
     {
+        // Attempt to get the latest state data from simulator
         SimulationState state = {};
         if (sim_recv_state(&state))
         {
@@ -53,6 +36,31 @@ int main(int argc, char **argv)
             }
 
             printf("\n\n");
+        }
+
+        // Let's send some data as well
+        char input[256];
+        printf("Enter a command (g)oto/(s)earch: ");
+        scanf("%s", input);
+        if (input[0] == 'g')
+        {
+            float x, y;
+            printf("x y: ");
+            scanf("%f %f", &x, &y);
+
+            DroneCmd cmd = {};
+            cmd.type = DroneCmdType_Goto;
+            cmd.x = x;
+            cmd.y = y;
+
+            sim_send_cmd(&cmd);
+        }
+        else if (input[0] == 's')
+        {
+            DroneCmd cmd = {};
+            cmd.type = DroneCmdType_Search;
+
+            sim_send_cmd(&cmd);
         }
     }
 
