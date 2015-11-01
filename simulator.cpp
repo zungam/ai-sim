@@ -1,6 +1,8 @@
-#include <stdio.h>
 #include "platform.h"
+#include "simulator.h"
 #include "SDL_opengl.h"
+
+#include <stdio.h>
 #include <math.h>
 
 #ifndef PI
@@ -84,11 +86,29 @@ sim_init(VideoMode mode)
     printf("stencil_bits: %d\n", mode.stencil_bits);
     printf("multisamples: %d\n", mode.multisamples);
     printf("swap_interval: %d\n", mode.swap_interval);
+
+    udp_open(20073, true);
 }
 
 void
 sim_tick(VideoMode mode, float t, float dt)
 {
+    // Send a test package once per second
+    persist r32 udp_send_timer = 1.0f;
+    udp_send_timer -= dt;
+    if (udp_send_timer <= 0.0f)
+    {
+        udp_send_timer = 1.0f;
+        Robot test_robot = {};
+        test_robot.x = 1.1f;
+        test_robot.y = 2.2f;
+        test_robot.q = 3.3f;
+        test_robot.vl = 4.4f;
+        test_robot.vr = 5.5f;
+        udp_addr dst = { 127, 0, 0, 1, 12345 };
+        udp_send((char*)&test_robot, sizeof(test_robot), dst);
+    }
+
     set_scale(mode.width/(r32)mode.height, 1.0f);
     glViewport(0, 0, mode.width, mode.height);
 
@@ -101,9 +121,10 @@ sim_tick(VideoMode mode, float t, float dt)
     glBegin(GL_LINES);
     {
         set_color(1.0f, 0.5f, 0.3f, 1.0f);
-        for (u32 i = 0; i < 80; i++)
-            draw_circle(0.2f*cos(0.8f*t + i / 15.0f),
-                        0.3f*sin(0.6f*t + i / 15.0f), 0.3f + i / 200.0f);
+        for (u32 i = 0; i < 32; i++)
+            draw_circle(0.2f*cos(1.0f*t + i / 15.0f),
+                        -0.2f+0.3f*sin(1.2f*t + i / 15.0f),
+                        0.3f + i / 300.0f);
 
         u32 wn = 4;
         for (u32 wave = 0; wave < wn; wave++)
@@ -116,7 +137,7 @@ sim_tick(VideoMode mode, float t, float dt)
                 r32 b = (i+1) / (r32)(ln-1);
                 r32 x0 = -1.0f + 2.0f*a;
                 r32 x1 = -1.0f + 2.0f*b;
-                r32 y = -0.75f;
+                r32 y = +0.75f;
                 r32 y0 = y + (0.03f+0.03f*p)*sin(0.3f*t + (a+4.0f*p)*1.2f*PI)+0.02f*cos((2.0f+p)*t+a);
                 r32 y1 = y + (0.03f+0.03f*p)*sin(0.3f*t + (b+4.0f*p)*1.2f*PI)+0.02f*cos((2.0f+p)*t+b);
                 draw_line(x0, y0, x1, y1);
