@@ -46,9 +46,8 @@ static int udp_socket = 0;
 
 bool udp_open(uint16_t listen_port, bool non_blocking)
 {
-    network.initialized = false;
-    network.socket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (network.socket < 0)
+    udp_socket = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udp_socket < 0)
     {
         // Failed to open socket
         UDP_ASSERT(false);
@@ -60,7 +59,7 @@ bool udp_open(uint16_t listen_port, bool non_blocking)
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(listen_port);
 
-    if (bind(network.socket, (struct sockaddr *)&address, sizeof(address)) < 0)
+    if (bind(udp_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
     {
         // Failed to bind socket
         UDP_ASSERT(false);
@@ -79,14 +78,14 @@ int udp_recv(char *data, uint32_t max_size, udp_addr *src)
     }
 
     struct sockaddr_in from;
-    int from_length = sizeof(from);
+    socklen_t from_length = sizeof(from);
     int bytes_read = recvfrom(
-        network.socket, data, max_size, 0,
+        udp_socket, data, max_size, 0,
         (struct sockaddr*)&from, &from_length);
     if (bytes_read <= 0)
         return 0;
 
-    uint32 from_address = ntohl(from.sin_addr.s_addr);
+    uint32_t from_address = ntohl(from.sin_addr.s_addr);
     src->ip0  = (from_address >> 24) & 0xff;
     src->ip1  = (from_address >> 16) & 0xff;
     src->ip2  = (from_address >>  8) & 0xff;
@@ -113,7 +112,7 @@ int udp_send(char *data, uint32_t size, udp_addr dst)
         (dst.ip3));
     address.sin_port = htons(dst.port);
 
-    int bytes_sent = sendto(network.socket, data, size, 0,
+    int bytes_sent = sendto(udp_socket, data, size, 0,
         (struct sockaddr*)&address, sizeof(struct sockaddr_in));
 
     return bytes_sent;

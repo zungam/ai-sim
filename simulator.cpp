@@ -62,8 +62,8 @@ sim_load(VideoMode *mode)
 {
     mode->width = 300;
     mode->height = 300;
-    mode->gl_major = 3;
-    mode->gl_minor = 1;
+    mode->gl_major = 1;
+    mode->gl_minor = 5;
     mode->double_buffer = 1;
     mode->depth_bits = 24;
     mode->stencil_bits = 8;
