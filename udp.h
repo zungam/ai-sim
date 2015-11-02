@@ -66,6 +66,12 @@ bool udp_open(uint16_t listen_port, bool non_blocking)
         return false;
     }
 
+    if (non_blocking)
+    {
+        int opt = 1;
+        ioctl(fd, FIONBIO, &opt);
+    }
+
     return true;
 }
 
