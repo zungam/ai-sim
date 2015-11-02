@@ -40,6 +40,7 @@ void udp_close();
 #if defined(__linux) || defined(__APPLE__)
 #include <netdb.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 
 static int udp_socket = 0;
@@ -69,7 +70,12 @@ bool udp_open(uint16_t listen_port, bool non_blocking)
     if (non_blocking)
     {
         int opt = 1;
-        ioctl(fd, FIONBIO, &opt);
+        if (ioctl(fd, FIONBIO, &opt) == -1)
+        {
+            // Failed to set socket to non-blocking
+            UDP_ASSERT(false);
+            return false;
+        }
     }
 
     return true;
