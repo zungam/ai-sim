@@ -70,7 +70,7 @@ bool udp_open(uint16_t listen_port, bool non_blocking)
     if (non_blocking)
     {
         int opt = 1;
-        if (ioctl(fd, FIONBIO, &opt) == -1)
+        if (ioctl(udp_socket, FIONBIO, &opt) == -1)
         {
             // Failed to set socket to non-blocking
             UDP_ASSERT(false);
