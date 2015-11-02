@@ -10,8 +10,6 @@ int main(int argc, char **argv)
     // allows me to run on a loop without stalling for data.
     sim_init_msgs(true);
 
-    printf("%d\n", sizeof(SimulationState));
-
     while (1)
     {
         // Attempt to get the latest state data from simulator

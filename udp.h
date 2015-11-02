@@ -98,11 +98,14 @@ int udp_recv(char *data, uint32_t max_size, udp_addr *src)
         return 0;
 
     uint32_t from_address = ntohl(from.sin_addr.s_addr);
-    src->ip0  = (from_address >> 24) & 0xff;
-    src->ip1  = (from_address >> 16) & 0xff;
-    src->ip2  = (from_address >>  8) & 0xff;
-    src->ip3  = (from_address >>  0) & 0xff;
-    src->port = ntohs(from.sin_port);
+    if (src)
+    {
+        src->ip0  = (from_address >> 24) & 0xff;
+        src->ip1  = (from_address >> 16) & 0xff;
+        src->ip2  = (from_address >>  8) & 0xff;
+        src->ip3  = (from_address >>  0) & 0xff;
+        src->port = ntohs(from.sin_port);
+    }
 
     return bytes_read;
 }
