@@ -5,6 +5,12 @@
 #include <stdio.h>
 #include <math.h>
 
+// This is purely for debugging because the
+// robots are moving so darn slow. Helps me
+// visualize the dynamics better by speeding
+// it up.
+#define SPEED_MULTIPLIER 10
+
 #ifndef PI
 #define PI 3.14159265359f
 #endif
@@ -81,6 +87,24 @@ draw_circle(float x, float y, float r)
     }
 }
 
+void robot_observe_state(sim_Robot *robot,
+                         float *out_x,
+                         float *out_y,
+                         float *out_vx,
+                         float *out_vy,
+                         float *out_q)
+{
+    // TODO: Add statistical uncertainty
+    // TODO: Might need multiple states to
+    // fully simulate statistical properties.
+    float v = 0.5f * (robot->vl + robot->vr);
+    *out_x = robot->x;
+    *out_y = robot->y;
+    *out_vx = -v * sin(robot->q);
+    *out_vy =  v * cos(robot->q);
+    *out_q = robot->q;
+}
+
 void robot_integrate(sim_Robot *robot, float dt)
 {
     // TODO: Proper integration to avoid pulsating radii
@@ -99,6 +123,9 @@ void robot_integrate(sim_Robot *robot, float dt)
         robot->y += (v / w) * (sin(robot->q + w*dt) - sin(robot->q));
     }
     robot->q += w * dt;
+
+    while (robot->q >= TWO_PI)
+        robot->q -= TWO_PI;
 
     robot->tangent_x = cos(robot->q);
     robot->tangent_y = sin(robot->q);
@@ -298,7 +325,8 @@ sim_init(VideoMode mode)
 void
 sim_tick(VideoMode mode, float t, float dt)
 {
-    advance_state(dt);
+    for (u32 i = 0; i < SPEED_MULTIPLIER; i++)
+        advance_state(dt);
 
     sim_Command cmd = {};
     if (sim_recv_cmd(&cmd))
@@ -321,26 +349,29 @@ sim_tick(VideoMode mode, float t, float dt)
         udp_send_timer = 1.0f;
         sim_State test_state = {};
         test_state.elapsed_sim_time = t;
-        test_state.drone_x = 1.0f;
-        test_state.drone_y = 2.0f;
-        test_state.drone_z = 3.0f;
+
+        test_state.drone_x = 0.0f;
+        test_state.drone_y = 0.0f;
+        test_state.drone_z = 0.0f;
 
         for (u32 i = 0; i < Num_Targets; i++)
         {
-            test_state.target_x[i] = (r32)i;
-            test_state.target_y[i] = (r32)(i+2);
-            test_state.target_vx[i] = 0.2f;
-            test_state.target_vy[i] = 0.3f;
-            test_state.target_q[i] = 0.1f;
+            robot_observe_state(&targets[i],
+                                &test_state.target_x[i],
+                                &test_state.target_y[i],
+                                &test_state.target_vx[i],
+                                &test_state.target_vy[i],
+                                &test_state.target_q[i]);
         }
 
         for (u32 i = 0; i < Num_Obstacles; i++)
         {
-            test_state.obstacle_x[i] = (r32)i * 4.0f;
-            test_state.obstacle_y[i] = 10.0f;
-            test_state.obstacle_vx[i] = 0.2f;
-            test_state.obstacle_vy[i] = 0.3f;
-            test_state.obstacle_q[i] = 0.3f;
+            robot_observe_state(&targets[i],
+                                &test_state.obstacle_x[i],
+                                &test_state.obstacle_y[i],
+                                &test_state.obstacle_vx[i],
+                                &test_state.obstacle_vy[i],
+                                &test_state.obstacle_q[i]);
         }
 
         sim_send_state(&test_state);
@@ -368,10 +399,12 @@ sim_tick(VideoMode mode, float t, float dt)
             draw_line(-10.0f, x, +10.0f, x);
         }
 
+        // draw targets
         set_color(1.0f, 0.35f, 0.11f, 1.0f);
         for (u32 i = 0; i < Num_Targets; i++)
             draw_robot(&targets[i]);
 
+        // draw obstacles
         set_color(1.0f, 0.9f, 0.1f, 1.0f);
         for (u32 i = 0; i < Num_Obstacles; i++)
             draw_robot(&obstacles[i]);
