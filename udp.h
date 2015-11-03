@@ -30,10 +30,25 @@ struct udp_addr
     uint16_t port;
 };
 
+// Basic functionality
+// -------------------
+
 bool udp_open(uint16_t listen_port, bool non_blocking);
 int  udp_recv(char *data, uint32_t size, udp_addr *src);
 int  udp_send(char *data, uint32_t size, udp_addr dst);
 void udp_close();
+
+// Convenience functions
+// ---------------------
+
+// Read as many packets as are available, and store
+// the latest packet in the memory location pointed
+// to by "result".
+// return 1: If atleast one packet with "size" number
+//           of bytes was received.
+// return 0: If no such packet was received.
+bool udp_read_all(char *result, char *buffer,
+                  uint32_t size, udp_addr *src);
 
 #ifdef UDP_IMPLEMENTATION
 
@@ -242,6 +257,32 @@ void udp_close()
     WSACleanup();
 }
 #endif
+
+bool udp_read_all(char *result,
+                  char *buffer,
+                  uint32_t size,
+                  udp_addr *src)
+{
+    uint32_t read_bytes = udp_recv(buffer, size, src);
+    if (read_bytes != size)
+    {
+        return false;
+    }
+    else
+    {
+        memcpy(result, buffer, size);
+        bool reading = true;
+        while (reading)
+        {
+            read_bytes = udp_recv(buffer, size, src);
+            if (read_bytes == size)
+                memcpy(result, buffer, size);
+            else
+                reading = false;
+        }
+        return true;
+    }
+}
 
 #endif // UDP_IMPLEMENTATION
 #endif // UDP_HEADER_INCLUDE

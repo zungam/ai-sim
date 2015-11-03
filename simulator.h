@@ -37,46 +37,50 @@
 
 #define Num_Targets 10
 #define Num_Obstacles 4
-struct Robot
-{
-    float x; // x-coordinate in world coordinates
-    float y; // y-coordinate in world coordinates
-    float q; // rotation relative world x-axis
-    float vl; // left wheel speed
-    float vr; // right wheel speed
-};
 
-struct Drone
-{
-    float x;
-    float y;
-    float z;
-};
-
-struct SimulationState
+// The simulation state is currently just fully
+// observable. In the future we will want to be
+// able to ask for state measurements that have
+// been corrupted by noise and uncertainties.
+struct sim_State
 {
     float elapsed_sim_time;
-    Robot targets[Num_Targets];
-    Robot obstacles[Num_Obstacles];
-    Drone drone;
+
+    float target_x[Num_Targets];  // x position
+    float target_y[Num_Targets];  // y position
+    float target_vx[Num_Targets]; // x velocity
+    float target_vy[Num_Targets]; // y velocity
+    float target_q[Num_Targets];  // angle relative x-axis
+
+    float obstacle_x[Num_Obstacles];  // x position
+    float obstacle_y[Num_Obstacles];  // y position
+    float obstacle_vx[Num_Obstacles]; // x velocity
+    float obstacle_vy[Num_Obstacles]; // y velocity
+    float obstacle_q[Num_Obstacles];  // angle relative x-axis
+
+    float drone_x;     // x position
+    float drone_vx;    // x velocity
+    float drone_y;     // y position
+    float drone_vy;    // y velocity
+    float drone_z;     // height
+    float drone_phi;   // roll
+    float drone_theta; // pitch
+    float drone_psi;   // yaw
 };
 
 // The drone command interface is still uncertain
 // and will most likely change alot over time. So
 // for now I provide an example of what it might
 // look like.
-enum DroneCmdType
+enum sim_CommandType
 {
-    // look around to observe robots
-    DroneCmdType_Search = 0,
-
-    // go to a given position (x, y)
-    DroneCmdType_Goto
+    sim_CommandType_Search = 0, // look around to observe robots
+    sim_CommandType_Goto        // go to a given position (x, y)
 };
 
-struct DroneCmd
+struct sim_Command
 {
-    DroneCmdType type;
+    sim_CommandType type;
     float x;
     float y;
 };
@@ -89,68 +93,28 @@ void sim_init_msgs(bool nonblocking)
     udp_open(RECV_PORT, nonblocking);
 }
 
-bool sim_recv_state(SimulationState *result)
+bool sim_recv_state(sim_State *result)
 {
-    SimulationState state = {};
-    uint32_t read_bytes = udp_recv((char*)&state, sizeof(SimulationState), 0);
-    if (read_bytes < sizeof(SimulationState))
-    {
-        return false;
-    }
-    else
-    {
-        // Read as many messages as are available to get
-        // the latest one.
-        *result = state;
-        bool reading = true;
-        while (reading)
-        {
-            read_bytes = udp_recv((char*)&state, sizeof(SimulationState), 0);
-            if (read_bytes)
-                *result = state;
-            else
-                reading = false;
-        }
-        return true;
-    }
+    sim_State buffer = {};
+    return udp_read_all((char*)result, (char*)&buffer, sizeof(sim_State), 0);
 }
 
-void sim_send_cmd(DroneCmd *cmd)
+void sim_send_cmd(sim_Command *cmd)
 {
     udp_addr dst = { 127, 0, 0, 1, SEND_PORT };
-    udp_send((char*)cmd, sizeof(DroneCmd), dst);
+    udp_send((char*)cmd, sizeof(sim_Command), dst);
 }
 
-bool sim_recv_cmd(DroneCmd *result)
+bool sim_recv_cmd(sim_Command *result)
 {
-    DroneCmd cmd = {};
-    uint32_t read_bytes = udp_recv((char*)&cmd, sizeof(DroneCmd), 0);
-    if (read_bytes < sizeof(DroneCmd))
-    {
-        return false;
-    }
-    else
-    {
-        // Read as many messages as are available to get
-        // the latest one.
-        *result = cmd;
-        bool reading = true;
-        while (reading)
-        {
-            read_bytes = udp_recv((char*)&cmd, sizeof(DroneCmd), 0);
-            if (read_bytes)
-                *result = cmd;
-            else
-                reading = false;
-        }
-        return true;
-    }
+    sim_Command buffer = {};
+    return udp_read_all((char*)result, (char*)&buffer, sizeof(sim_Command), 0);
 }
 
-void sim_send_state(SimulationState *state)
+void sim_send_state(sim_State *state)
 {
     udp_addr dst = { 127, 0, 0, 1, SEND_PORT };
-    udp_send((char*)state, sizeof(SimulationState), dst);
+    udp_send((char*)state, sizeof(sim_State), dst);
 }
 
 #endif

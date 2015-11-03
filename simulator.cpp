@@ -97,10 +97,10 @@ sim_tick(VideoMode mode, float t, float dt)
     persist r32 worm_track_x = 0.0f;
     persist r32 worm_track_y = -0.2f;
 
-    DroneCmd cmd = {};
+    sim_Command cmd = {};
     if (sim_recv_cmd(&cmd))
     {
-        if (cmd.type == DroneCmdType_Goto)
+        if (cmd.type == sim_CommandType_Goto)
         {
             worm_track_x = cmd.x;
             worm_track_y = cmd.y;
@@ -113,28 +113,28 @@ sim_tick(VideoMode mode, float t, float dt)
     if (udp_send_timer <= 0.0f)
     {
         udp_send_timer = 1.0f;
-        SimulationState test_state = {};
+        sim_State test_state = {};
         test_state.elapsed_sim_time = t;
-        test_state.drone.x = 1.0f;
-        test_state.drone.y = 2.0f;
-        test_state.drone.z = 3.0f;
+        test_state.drone_x = 1.0f;
+        test_state.drone_y = 2.0f;
+        test_state.drone_z = 3.0f;
 
         for (u32 i = 0; i < Num_Targets; i++)
         {
-            test_state.targets[i].x = (r32)i;
-            test_state.targets[i].y = (r32)(i+2);
-            test_state.targets[i].q = 0.1f;
-            test_state.targets[i].vl = 0.2f;
-            test_state.targets[i].vr = 0.3f;
+            test_state.target_x[i] = (r32)i;
+            test_state.target_y[i] = (r32)(i+2);
+            test_state.target_vx[i] = 0.2f;
+            test_state.target_vy[i] = 0.3f;
+            test_state.target_q[i] = 0.1f;
         }
 
         for (u32 i = 0; i < Num_Obstacles; i++)
         {
-            test_state.obstacles[i].x = (r32)i * 4.0f;
-            test_state.obstacles[i].y = 10.0f;
-            test_state.obstacles[i].q = 0.3f;
-            test_state.obstacles[i].vl = 0.2f;
-            test_state.obstacles[i].vr = 0.3f;
+            test_state.obstacle_x[i] = (r32)i * 4.0f;
+            test_state.obstacle_y[i] = 10.0f;
+            test_state.obstacle_vx[i] = 0.2f;
+            test_state.obstacle_vy[i] = 0.3f;
+            test_state.obstacle_q[i] = 0.3f;
         }
 
         sim_send_state(&test_state);
