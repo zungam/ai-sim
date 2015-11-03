@@ -9,7 +9,7 @@
 // robots are moving so darn slow. Helps me
 // visualize the dynamics better by speeding
 // it up.
-#define SPEED_MULTIPLIER 10
+#define SPEED_MULTIPLIER 1
 
 #ifndef PI
 #define PI 3.14159265359f
@@ -347,34 +347,34 @@ sim_tick(VideoMode mode, float t, float dt)
     if (udp_send_timer <= 0.0f)
     {
         udp_send_timer = 1.0f;
-        sim_State test_state = {};
-        test_state.elapsed_sim_time = t;
+        sim_State state = {};
+        state.elapsed_sim_time = t;
 
-        test_state.drone_x = 0.0f;
-        test_state.drone_y = 0.0f;
-        test_state.drone_z = 0.0f;
+        state.drone_x = 0.0f;
+        state.drone_y = 0.0f;
+        state.drone_z = 0.0f;
 
         for (u32 i = 0; i < Num_Targets; i++)
         {
             robot_observe_state(&targets[i],
-                                &test_state.target_x[i],
-                                &test_state.target_y[i],
-                                &test_state.target_vx[i],
-                                &test_state.target_vy[i],
-                                &test_state.target_q[i]);
+                                &state.target_x[i],
+                                &state.target_y[i],
+                                &state.target_vx[i],
+                                &state.target_vy[i],
+                                &state.target_q[i]);
         }
 
         for (u32 i = 0; i < Num_Obstacles; i++)
         {
             robot_observe_state(&targets[i],
-                                &test_state.obstacle_x[i],
-                                &test_state.obstacle_y[i],
-                                &test_state.obstacle_vx[i],
-                                &test_state.obstacle_vy[i],
-                                &test_state.obstacle_q[i]);
+                                &state.obstacle_x[i],
+                                &state.obstacle_y[i],
+                                &state.obstacle_vx[i],
+                                &state.obstacle_vy[i],
+                                &state.obstacle_q[i]);
         }
 
-        sim_send_state(&test_state);
+        sim_send_state(&state);
     }
 
     r32 a = mode.width/(r32)mode.height;
