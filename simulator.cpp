@@ -431,8 +431,8 @@ sim_tick(VideoMode mode, float t, float dt)
         sim_State state = {};
         state.elapsed_sim_time = t;
 
-        state.drone_x = 0.0f;
-        state.drone_y = 0.0f;
+        state.drone_x = drone.x;
+        state.drone_y = drone.y;
         state.drone_z = 0.0f;
 
         for (u32 i = 0; i < Num_Targets; i++)
