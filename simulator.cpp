@@ -30,8 +30,8 @@ struct sim_Robot
     robot_Internal internal;
     robot_Action action;
 
-    float x;  // position along x-axis (m)
-    float y;  // position along y-axis (m)
+    float x;  // x-position relative center of floor (m)
+    float y;  // y-position relative center of floor (m)
     float L;  // distance between wheels (m)
     float vl; // left-wheel speed (m/s)
     float vr; // right-wheel speed (m/s)
@@ -43,10 +43,33 @@ struct sim_Robot
     float forward_y;
 };
 
+struct sim_Drone
+{
+    // Parameters describing the dynamics from
+    // reference position to position:
+    float zeta; // relative damping factor
+    float w;    // natural frequency
+    float a;    // backshoot period
+
+    // These are "virtual" states that are only
+    // needed to realize the transfer functions.
+    float x1;
+    float x2;
+    float y1;
+    float y2;
+
+    float x; // x-position relative center of floor (m)
+    float y; // y-position relative center of floor (m)
+
+    float xr; // target x-position (m)
+    float yr; // target y-position (m)
+};
+
 #define Num_Robots (Num_Targets + Num_Obstacles)
 static sim_Robot robots[Num_Robots];
 static sim_Robot *targets;
 static sim_Robot *obstacles;
+static sim_Drone drone;
 
 void
 set_color(float r, float g, float b, float a)
@@ -105,6 +128,40 @@ void robot_observe_state(sim_Robot *robot,
     *out_q = robot->q;
 }
 
+void drone_integrate(sim_Drone *drone, float dt)
+{
+    // I've modelled the dynamics from the reference
+    // position (xr) to position (x) as
+    //    x            w^2 (1 + as)
+    //   ---(s) = ----------------------
+    //   x_r      s^2 + 2 zeta w s + w^2
+    // which represents an oscillatory non-minimum phase
+    // system. Because it is oscillatory, the drone might
+    // overshoot on its reference. Because it is non-minimum
+    // phase, it might backshoot when it receives a new
+    // reference. The equations below is a canonical
+    // controllable form realization of the transfer function
+    // above.
+    float a11 = -2.0f * drone->zeta * drone->w;
+    float a12 = -drone->w*drone->w;
+    float a21 = 1.0f;
+    float a22 = 0.0f;
+    float c1 = drone->a * drone->w * drone->w;
+    float c2 = drone->w * drone->w;
+    float Dx1 = a11 * drone->x1 + a12 * drone->x2 + drone->xr;
+    float Dx2 = a21 * drone->x1 + a22 * drone->x2;
+    drone->x1 += Dx1 * dt;
+    drone->x2 += Dx2 * dt;
+    drone->x = c1 * drone->x1 + c2 * drone->x2;
+
+    // The dynamics from reference y to y is the same as above.
+    float Dy1 = a11 * drone->y1 + a12 * drone->y2 + drone->yr;
+    float Dy2 = a21 * drone->y1 + a22 * drone->y2;
+    drone->y1 += Dy1 * dt;
+    drone->y2 += Dy2 * dt;
+    drone->y = c1 * drone->y1 + c2 * drone->y2;
+}
+
 void robot_integrate(sim_Robot *robot, float dt)
 {
     // TODO: Proper integration to avoid pulsating radii
@@ -147,6 +204,8 @@ void advance_state(float dt)
 
     robot_Event events[Num_Robots] = {};
     CollisionInfo collision[Num_Robots] = {};
+
+    drone_integrate(&drone, dt);
 
     for (u32 i = 0; i < Num_Robots; i++)
     {
@@ -252,8 +311,8 @@ void draw_robot(sim_Robot *r)
               r->x + r->tangent_x * r->L * 0.5f,
               r->y + r->tangent_y * r->L * 0.5f);
     draw_line(r->x, r->y,
-              r->x + r->forward_x * 0.2f,
-              r->y + r->forward_y * 0.2f);
+              r->x + r->forward_x * 0.5f,
+              r->y + r->forward_y * 0.5f);
 }
 
 void
@@ -320,20 +379,42 @@ sim_init(VideoMode mode)
 
         obstacles[i] = robot;
     }
+
+    // These parameters were chosen somewhat willy-nilly
+    // TODO: Record some videos of our drone and fit the
+    // model parameters, so that we atleast get the time
+    // constants of the system right. We don't really care
+    // too much about the exact dynamics, but the timing
+    // information is pretty important.
+    drone.zeta = 0.707f;
+    drone.w = 0.32f;
+    drone.a = -0.2f;
+    drone.x = 0.0f;
+    drone.x1 = 0.0f;
+    drone.x2 = 0.0f;
+    drone.y = 0.0f;
+    drone.y1 = 0.0f;
+    drone.y2 = 0.0f;
+    drone.xr = 0.0f;
+    drone.yr = 0.0f;
 }
 
 void
 sim_tick(VideoMode mode, float t, float dt)
 {
     for (u32 i = 0; i < SPEED_MULTIPLIER; i++)
+    {
+        drone_integrate(&drone, dt);
         advance_state(dt);
+    }
 
     sim_Command cmd = {};
     if (sim_recv_cmd(&cmd))
     {
         if (cmd.type == sim_CommandType_Goto)
         {
-            // ?
+            drone.xr = cmd.x;
+            drone.yr = cmd.y;
         }
         else if (cmd.type == sim_CommandType_Search)
         {
@@ -408,6 +489,17 @@ sim_tick(VideoMode mode, float t, float dt)
         set_color(1.0f, 0.9f, 0.1f, 1.0f);
         for (u32 i = 0; i < Num_Obstacles; i++)
             draw_robot(&obstacles[i]);
+
+        // draw drone
+        set_color(0.1f, 1.0f, 1.0f, 1.0f);
+        draw_line(drone.x - 0.5f, drone.y,
+                  drone.x + 0.5f, drone.y);
+        draw_line(drone.x, drone.y - 0.5f,
+                  drone.x, drone.y + 0.5f);
+
+        // draw drone goto
+        set_color(0.2f, 1.0f, 0.2f, 0.5f);
+        draw_circle(drone.xr, drone.yr, 0.25f);
     }
     glEnd();
 }
