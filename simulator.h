@@ -74,8 +74,10 @@ struct sim_State
 // look like.
 enum sim_CommandType
 {
-    sim_CommandType_Search = 0, // look around to observe robots
-    sim_CommandType_Goto        // go to a given position (x, y)
+    sim_CommandType_LandRobot = 0, // descend to target height
+    sim_CommandType_LandFloor,     // descend to floor level
+    sim_CommandType_Track,         // track robot number i
+    sim_CommandType_Search         // ascend to 3 meters and go to (x, y)
 };
 
 struct sim_Command
@@ -83,6 +85,7 @@ struct sim_Command
     sim_CommandType type;
     float x;
     float y;
+    int i;
 };
 
 #define UDP_IMPLEMENTATION

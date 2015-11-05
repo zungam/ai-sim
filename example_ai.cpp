@@ -38,27 +38,53 @@ int main(int argc, char **argv)
 
         // Let's send some data as well
         char input[256];
-        printf("Enter a command (g)oto/(s)earch: ");
+        printf("(1) Descend to robot height\n");
+        printf("(2) Descend to floor\n");
+        printf("(3) Track robot\n");
+        printf("(4) Search\n");
+        printf("Enter a command [1/2/3/4]: ");
         scanf("%s", input);
-        if (input[0] == 'g')
+        switch (input[0])
         {
-            float x, y;
-            printf("x y: ");
-            scanf("%f %f", &x, &y);
+            case '1':
+            {
+                sim_Command cmd = {};
+                cmd.type = sim_CommandType_LandRobot;
 
-            sim_Command cmd = {};
-            cmd.type = sim_CommandType_Goto;
-            cmd.x = x;
-            cmd.y = y;
+                sim_send_cmd(&cmd);
+            } break;
+            case '2':
+            {
+                sim_Command cmd = {};
+                cmd.type = sim_CommandType_LandFloor;
 
-            sim_send_cmd(&cmd);
-        }
-        else if (input[0] == 's')
-        {
-            sim_Command cmd = {};
-            cmd.type = sim_CommandType_Search;
+                sim_send_cmd(&cmd);
+            } break;
+            case '3':
+            {
+                int i;
+                printf("i [0-9]: ");
+                scanf("%d", &i);
 
-            sim_send_cmd(&cmd);
+                sim_Command cmd = {};
+                cmd.type = sim_CommandType_Track;
+                cmd.i = i;
+
+                sim_send_cmd(&cmd);
+            } break;
+            case '4':
+            {
+                float x, y;
+                printf("x y: ");
+                scanf("%f %f", &x, &y);
+
+                sim_Command cmd = {};
+                cmd.type = sim_CommandType_Search;
+                cmd.x = x;
+                cmd.y = y;
+
+                sim_send_cmd(&cmd);
+            } break;
         }
     }
 
