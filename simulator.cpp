@@ -610,7 +610,7 @@ sim_tick(VideoMode mode, float t, float dt)
         float h1 = 3.0f;
         float alpha = (drone.z - h0) / (h1 - h0);
         float visible_radius = 0.5f + 3.0f * alpha + 2.5f * alpha * alpha;
-        glColor4f(0.7f, 0.6f, 0.5f, 0.1f);
+        glColor4f(0.34f, 0.4f, 0.49f, 0.15f);
         fill_circle(drone.x, drone.y, visible_radius);
     }
     glEnd();
@@ -618,7 +618,7 @@ sim_tick(VideoMode mode, float t, float dt)
     glBegin(GL_LINES);
     {
         // draw grid
-        set_color(0.34, 0.4, 0.49, 0.45f);
+        set_color(0.34f, 0.4f, 0.49f, 0.45f);
         for (u32 i = 0; i <= 20; i++)
         {
             float x = (-1.0f + 2.0f * i / 20.0f) * 10.0f;
@@ -633,35 +633,35 @@ sim_tick(VideoMode mode, float t, float dt)
         draw_line(+10.0f, -10.0f, +10.0f, +10.0f);
 
         // draw targets
-        set_color(0.75, 0.2, 0.26, 1.0f);
+        set_color(0.75f, 0.2f, 0.26f, 1.0f);
         for (u32 i = 0; i < Num_Targets; i++)
             draw_robot(&targets[i]);
 
         // draw obstacles
-        set_color(0.71, 0.7, 0.07, 1.0f);
+        set_color(0.71f, 0.7f, 0.07f, 1.0f);
         for (u32 i = 0; i < Num_Obstacles; i++)
             draw_robot(&obstacles[i]);
 
         // draw drone
-        set_color(0.33, 0.55, 0.53, 1.0f);
+        set_color(0.33f, 0.55f, 0.53f, 1.0f);
         draw_line(drone.x - 0.5f, drone.y,
                   drone.x + 0.5f, drone.y);
         draw_line(drone.x, drone.y - 0.5f,
                   drone.x, drone.y + 0.5f);
 
         // draw drone goto
-        set_color(0.33, 0.55, 0.53, 0.5f);
+        set_color(0.33f, 0.55f, 0.53f, 0.5f);
         draw_circle(drone.xr, drone.yr, 0.25f);
 
         // draw drone height "reference sheet"
         set_scale(a*12.0f, 4.0f);
-        set_color(0.34, 0.4, 0.49, 1.0f);
+        set_color(0.34f, 0.4f, 0.49f, 1.0f);
         draw_line(-11.0f, 0.0f, -10.5f, 0.0f); // ground plane level
-        set_color(0.75, 0.2, 0.26, 1.0f);
+        set_color(0.75f, 0.2f, 0.26f, 1.0f);
         draw_line(-11.0f, 0.1f, -10.5f, 0.1f); // height of target
-        set_color(0.71, 0.7, 0.07, 1.0f);
+        set_color(0.71f, 0.7f, 0.07f, 1.0f);
         draw_line(-11.0f, 2.0f, -10.5f, 2.0f); // height of obstacle
-        set_color(0.33, 0.55, 0.53, 1.0f);
+        set_color(0.33f, 0.55f, 0.53f, 1.0f);
         draw_line(-11.0f, drone.z, -10.5f, drone.z); // height of drone
     }
     glEnd();
