@@ -72,7 +72,10 @@ struct sim_Drone
     float yr; // target y-position (m)
     float zr; // target height (m)
 
+    float v_max; // maximum speed in x and y (seperately)
+
     sim_Command cmd; // current active command
+    bool cmd_complete;
 };
 
 #define Num_Robots (Num_Targets + Num_Obstacles)
@@ -142,7 +145,8 @@ draw_circle(float x, float y, float r)
     }
 }
 
-void robot_observe_state(sim_Robot *robot,
+void
+robot_observe_state(sim_Robot *robot,
                          float *out_x,
                          float *out_y,
                          float *out_vx,
@@ -160,7 +164,16 @@ void robot_observe_state(sim_Robot *robot,
     *out_q = robot->q;
 }
 
-void drone_integrate(sim_Drone *drone, float dt)
+float
+clamp(float x, float x0, float x1)
+{
+    if (x < x0) return x0;
+    else if (x > x1) return x1;
+    else return x;
+}
+
+void
+drone_integrate(sim_Drone *drone, float dt)
 {
     // I've modelled the dynamics from the reference
     // position (xr) to position (x) as
@@ -174,6 +187,7 @@ void drone_integrate(sim_Drone *drone, float dt)
     // reference. The equations below is a canonical
     // controllable form realization of the transfer function
     // above.
+    float x1y1_max = drone->v_max / (drone->w*drone->w);
     float a11 = -2.0f * drone->zeta * drone->w;
     float a12 = -drone->w*drone->w;
     float a21 = 1.0f;
@@ -184,6 +198,7 @@ void drone_integrate(sim_Drone *drone, float dt)
     float Dx2 = a21 * drone->x1 + a22 * drone->x2;
     drone->x1 += Dx1 * dt;
     drone->x2 += Dx2 * dt;
+    drone->x1 = clamp(drone->x1, -x1y1_max, x1y1_max);
     drone->x = c1 * drone->x1 + c2 * drone->x2;
 
     // The dynamics from reference y to y is the same as above.
@@ -191,6 +206,7 @@ void drone_integrate(sim_Drone *drone, float dt)
     float Dy2 = a21 * drone->y1 + a22 * drone->y2;
     drone->y1 += Dy1 * dt;
     drone->y2 += Dy2 * dt;
+    drone->y1 = clamp(drone->y1, -x1y1_max, x1y1_max);
     drone->y = c1 * drone->y1 + c2 * drone->y2;
 
     // And from reference height to height
@@ -201,7 +217,8 @@ void drone_integrate(sim_Drone *drone, float dt)
     drone->z = c1 * drone->z1 + c2 * drone->z2;
 }
 
-void robot_integrate(sim_Robot *robot, float dt)
+void
+robot_integrate(sim_Robot *robot, float dt)
 {
     float v = 0.5f * (robot->vl + robot->vr);
     float w = (robot->vr - robot->vl) / (robot->L*0.5f);
@@ -232,12 +249,14 @@ void robot_integrate(sim_Robot *robot, float dt)
     robot->forward_y =  robot->tangent_x;
 }
 
-float vector_length(float dx, float dy)
+float
+vector_length(float dx, float dy)
 {
     return sqrt(dx*dx + dy*dy);
 }
 
-void advance_state(float dt)
+void
+advance_state(float dt)
 {
     persist float simulation_time = 0.0f;
     simulation_time += dt;
@@ -331,28 +350,71 @@ void advance_state(float dt)
         }
         if (collision[i].bumper_hits > 0)
             events[i].is_bumper = 1;
+    }
 
-        // Determine if the drone is close enough to the robot's
-        // magnet sensor to trigger a top touch, or if the drone
-        // is low enough to trigger a front bumper.
-        if (vector_length(robots[i].x - drone.x, robots[i].y - drone.y)
-            <= robots[i].L * 0.5f)
+    // Ugly command handling
+    // Hardcoded in behaviour for top-touching and
+    // bumper hitting.
+    switch (drone.cmd.type)
+    {
+        case sim_CommandType_LandOnTopOf:
         {
-            if (drone.z >= targets[i].height &&
-                drone.z <= targets[i].height + Magnet_Detection_Range)
+            if (!drone.cmd_complete)
             {
-                events[i].is_top_touch = 1;
+                drone.xr = targets[drone.cmd.i].x;
+                drone.yr = targets[drone.cmd.i].y;
+                if (vector_length(drone.xr - drone.x, drone.yr - drone.y)
+                    <= targets[drone.cmd.i].L)
+                {
+                    drone.zr = 0.125f;
+                }
+                if (drone.z < 0.2f && drone.zr < 0.2f)
+                {
+                    events[drone.cmd.i].is_top_touch = 1;
+                }
+                if (targets[drone.cmd.i].action.was_top_touched)
+                {
+                    drone.zr = 1.5f;
+                    drone.cmd_complete = 1;
+                }
             }
-            else if (drone.z < targets[i].height)
+        } break;
+        case sim_CommandType_LandInFrontOf:
+        {
+            if (!drone.cmd_complete)
             {
-                // TODO: In real the robot would only turn if
-                // we hit its _front_ bumper. We don't check
-                // for that here yet though. It is the same
-                // as the check for _on_bumper_ above, but I
-                // have purposefully left it out for now.
-                events[i].is_bumper = 1;
+                drone.xr = targets[drone.cmd.i].x;
+                drone.yr = targets[drone.cmd.i].y;
+                if (vector_length(drone.xr - drone.x, drone.yr - drone.y)
+                    <= targets[drone.cmd.i].L)
+                {
+                    drone.zr = 0.05f;
+                }
+                if (drone.z < 0.1f && drone.zr < 0.1f)
+                {
+                    events[drone.cmd.i].is_bumper = 1;
+                }
+                if (targets[drone.cmd.i].action.was_bumped)
+                {
+                    drone.zr = 1.5f;
+                    drone.cmd_complete = 1;
+                }
             }
-        }
+        } break;
+        case sim_CommandType_Track:
+        {
+            // Follow a given robot
+            drone.xr = targets[drone.cmd.i].x;
+            drone.yr = targets[drone.cmd.i].y;
+            drone.zr = 1.5f;
+        } break;
+        case sim_CommandType_Search:
+        {
+            // Go to a setpoint and hover high
+            drone.xr = drone.cmd.x;
+            drone.yr = drone.cmd.y;
+            drone.zr = 3.0f;
+        } break;
     }
 
     for (u32 i = 0; i < Num_Robots; i++)
@@ -372,7 +434,8 @@ void advance_state(float dt)
     }
 }
 
-void draw_robot(sim_Robot *r)
+void
+draw_robot(sim_Robot *r)
 {
     draw_circle(r->x, r->y, r->L * 0.5f);
     draw_line(r->x - r->tangent_x * r->L * 0.5f,
@@ -477,9 +540,9 @@ sim_init(VideoMode mode)
     // constants of the system right. We don't really care
     // too much about the exact dynamics, but the timing
     // information is pretty important.
-    drone.zeta = 0.707f;
-    drone.w = 0.5f;
-    drone.a = -0.35f;
+    drone.zeta = 0.9f;
+    drone.w = 2.4f;
+    drone.a = -0.03f;
     drone.x = 0.0f;
     drone.x1 = 0.0f;
     drone.x2 = 0.0f;
@@ -492,21 +555,17 @@ sim_init(VideoMode mode)
     drone.z1 = 0.0f;
     drone.z2 = 0.0f;
     drone.zr = 1.5f;
+    drone.v_max = 3.0f;
     drone.cmd.type = sim_CommandType_Search;
     drone.cmd.x = 0.0f;
     drone.cmd.y = 0.0f;
     drone.cmd.i = 0;
+    drone.cmd_complete = 0;
 }
 
 void
 sim_tick(VideoMode mode, float t, float dt)
 {
-    for (u32 i = 0; i < SPEED_MULTIPLIER; i++)
-    {
-        drone_integrate(&drone, dt);
-        advance_state(dt);
-    }
-
     // Poll for commands sent to the drone
     sim_Command cmd = {};
     if (sim_recv_cmd(&cmd))
@@ -514,48 +573,13 @@ sim_tick(VideoMode mode, float t, float dt)
         // For now we react to the command in an ad-hoc
         // manner. Later we will want to formalize the
         // drone response to various commands
-        drone.cmd.type = cmd.type;
-        switch (cmd.type)
-        {
-            case sim_CommandType_LandRobot:
-            {
-                // Descend low enough to trigger magnet
-                drone.zr = 0.125f;
-            } break;
-            case sim_CommandType_LandFloor:
-            {
-                // Descend low enough to trigger front bumper
-                drone.zr = 0.05f;
-            } break;
-            case sim_CommandType_Track:
-            {
-                // Follow a given robot (unrealistic!)
-                drone.cmd.i = cmd.i;
-                drone.zr = 1.5f;
-            } break;
-            case sim_CommandType_Search:
-            {
-                // Go to a setpoint and hover high
-                drone.cmd.x = cmd.x;
-                drone.cmd.y = cmd.y;
-                drone.zr = 3.0f;
-            } break;
-        }
+        drone.cmd = cmd;
+        drone.cmd_complete = 0;
     }
 
-    if (drone.cmd.type == sim_CommandType_Search)
+    for (u32 i = 0; i < SPEED_MULTIPLIER; i++)
     {
-        drone.xr = drone.cmd.x;
-        drone.yr = drone.cmd.y;
-    }
-    else
-    {
-        float speed = (targets[drone.cmd.i].vl +
-                       targets[drone.cmd.i].vr) * 0.5f;
-        drone.xr = targets[drone.cmd.i].x +
-                   targets[drone.cmd.i].forward_x * speed * 1.3f;
-        drone.yr = targets[drone.cmd.i].y +
-                   targets[drone.cmd.i].forward_y * speed * 1.3f;
+        advance_state(dt);
     }
 
     // Send a test package once per second
@@ -570,6 +594,7 @@ sim_tick(VideoMode mode, float t, float dt)
         state.drone_x = drone.x;
         state.drone_y = drone.y;
         state.drone_z = drone.z;
+        state.drone_cmd_complete = drone.cmd_complete;
 
         for (u32 i = 0; i < Num_Targets; i++)
         {
@@ -652,6 +677,23 @@ sim_tick(VideoMode mode, float t, float dt)
         // draw drone goto
         set_color(0.33f, 0.55f, 0.53f, 0.5f);
         draw_circle(drone.xr, drone.yr, 0.25f);
+
+        // draw indicators of magnet or bumper activations
+        for (u32 i = 0; i < Num_Targets; i++)
+        {
+            float x = targets[i].x;
+            float y = targets[i].y;
+            if (targets[i].action.was_bumped)
+            {
+                set_color(1.0f, 0.3f, 0.1f, 1.0f);
+                draw_circle(x, y, 0.5f);
+            }
+            else if (targets[i].action.was_top_touched)
+            {
+                set_color(1.0f, 1.0f, 1.0f, 1.0f);
+                draw_circle(x, y, 0.5f);
+            }
+        }
 
         // draw drone height "reference sheet"
         set_scale(a*12.0f, 4.0f);

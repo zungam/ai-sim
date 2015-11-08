@@ -66,6 +66,13 @@ struct sim_State
     float drone_phi;   // roll
     float drone_theta; // pitch
     float drone_psi;   // yaw
+
+    // This is set to true once the drone has successfully
+    // finished its given command. Some commands, like track,
+    // are never completed. LandOnTopOf and LandInFrontOf
+    // are completed once the drone has landed, respectively,
+    // on top of or in front of the desired robot.
+    bool drone_cmd_complete;
 };
 
 // The drone command interface is still uncertain
@@ -74,10 +81,10 @@ struct sim_State
 // look like.
 enum sim_CommandType
 {
-    sim_CommandType_LandRobot = 0, // descend to target height
-    sim_CommandType_LandFloor,     // descend to floor level
-    sim_CommandType_Track,         // track robot number i
-    sim_CommandType_Search         // ascend to 3 meters and go to (x, y)
+    sim_CommandType_LandOnTopOf = 0, // trigger one 45 deg turn of robot (i)
+    sim_CommandType_LandInFrontOf,   // trigger one 180 deg turn of robot (i)
+    sim_CommandType_Track,           // follow robot (i) at a constant height
+    sim_CommandType_Search           // ascend to 3 meters and go to (x, y)
 };
 
 struct sim_Command

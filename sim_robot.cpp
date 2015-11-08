@@ -149,6 +149,9 @@ struct robot_Action
     bool red_led;
     bool green_led;
 
+    bool was_top_touched;
+    bool was_bumped;
+
     // I don't include passive/safe mode flags as
     // in the original iRobot IARC ground robot code.
     // They seem fairly useless for simulation.
@@ -232,6 +235,8 @@ robot_State robot_fsm(robot_State state,
                       robot_Event event,
                       robot_Action *action)
 {
+    action->was_bumped = 0;
+    action->was_top_touched = 0;
     if (!internal->initialized)
     {
         internal->begin_noise = event.elapsed_sim_time;
@@ -322,12 +327,9 @@ robot_State robot_fsm(robot_State state,
             {
                 TransitionTo(TrajectoryNoise);
             }
-            else
+            else if (event.is_bumper)
             {
-                if (event.is_bumper)
-                {
-                    TransitionTo(TargetCollision);
-                }
+                TransitionTo(TargetCollision);
             }
         } break;
 
@@ -370,11 +372,13 @@ robot_State robot_fsm(robot_State state,
 
         case Robot_TargetCollision:
         {
+            action->was_bumped = 1;
             TransitionTo(Reverse);
         } break;
 
         case Robot_TopTouch:
         {
+            action->was_top_touched = 1;
             if (event.is_wait_sig)
             {
                 TransitionTo(TargetWait);

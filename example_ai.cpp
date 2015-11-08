@@ -38,8 +38,8 @@ int main(int argc, char **argv)
 
         // Let's send some data as well
         char input[256];
-        printf("(1) Descend to robot height\n");
-        printf("(2) Descend to floor\n");
+        printf("(1) Land on top of robot\n");
+        printf("(2) Land in front of\n");
         printf("(3) Track robot\n");
         printf("(4) Search\n");
         printf("Enter a command [1/2/3/4]: ");
@@ -48,15 +48,25 @@ int main(int argc, char **argv)
         {
             case '1':
             {
+                int i;
+                printf("i [0-9]: ");
+                scanf("%d", &i);
+
                 sim_Command cmd = {};
-                cmd.type = sim_CommandType_LandRobot;
+                cmd.type = sim_CommandType_LandOnTopOf;
+                cmd.i = i;
 
                 sim_send_cmd(&cmd);
             } break;
             case '2':
             {
+                int i;
+                printf("i [0-9]: ");
+                scanf("%d", &i);
+
                 sim_Command cmd = {};
-                cmd.type = sim_CommandType_LandFloor;
+                cmd.type = sim_CommandType_LandInFrontOf;
+                cmd.i = i;
 
                 sim_send_cmd(&cmd);
             } break;
