@@ -163,13 +163,11 @@ struct robot_Action
 
 void ObstacleWaitStart(robot_Event event, robot_Internal *internal, robot_Action *action)
 {
-    // printf("Transition to ObstacleWait\n");
     action->red_led = 1;
 }
 
 void ObstacleRunStart(robot_Event event, robot_Internal *internal, robot_Action *action)
 {
-    // printf("Transition to ObstacleRun\n");
     action->red_led = 1;
     action->green_led = 0;
     action->left_wheel = Robot_Speed - 9 * Millimeters / Seconds;
@@ -178,7 +176,6 @@ void ObstacleRunStart(robot_Event event, robot_Internal *internal, robot_Action 
 
 void ObstacleCollisionStart(robot_Event event, robot_Internal *internal, robot_Action *action)
 {
-    // printf("Transition to ObstacleCollision\n");
     action->left_wheel = 0.0f;
     action->right_wheel = 0.0f;
     action->red_led = 1;
@@ -187,13 +184,11 @@ void ObstacleCollisionStart(robot_Event event, robot_Internal *internal, robot_A
 
 void TargetWaitStart(robot_Event event, robot_Internal *internal, robot_Action *action)
 {
-    // printf("Transition to TargetWait\n");
     action->green_led = 1;
 }
 
 void TargetRunStart(robot_Event event, robot_Internal *internal, robot_Action *action)
 {
-    // printf("Transition to TargetRun\n");
     action->left_wheel = Robot_Speed;
     action->right_wheel = Robot_Speed;
     action->green_led = 1;
@@ -202,7 +197,6 @@ void TargetRunStart(robot_Event event, robot_Internal *internal, robot_Action *a
 
 void TrajectoryNoiseStart(robot_Event event, robot_Internal *internal, robot_Action *action)
 {
-    // printf("Transition to TrajectoryNoise\n");
     int offset = Random_0_64() - Random_Max / 2;
     speed offset_mps = (speed)offset * Millimeters / Seconds;
     action->left_wheel = Robot_Speed - offset_mps;
@@ -213,7 +207,6 @@ void TrajectoryNoiseStart(robot_Event event, robot_Internal *internal, robot_Act
 
 void ReverseStart(robot_Event event, robot_Internal *internal, robot_Action *action)
 {
-    // printf("Transition to Reverse\n");
     action->left_wheel = -Robot_Speed / 2.0f;
     action->right_wheel = Robot_Speed / 2.0f;
     action->red_led = 1;
@@ -222,14 +215,12 @@ void ReverseStart(robot_Event event, robot_Internal *internal, robot_Action *act
 
 void TargetCollisionStart(robot_Event event, robot_Internal *internal, robot_Action *action)
 {
-    // printf("Transition to TargetCollision\n");
     action->left_wheel = 0.0f;
     action->right_wheel = 0.0f;
 }
 
 void TopTouchStart(robot_Event event, robot_Internal *internal, robot_Action *action)
 {
-    // printf("Transition to TopTouch\n");
     action->left_wheel = -Robot_Speed / 2.0f;
     action->right_wheel = Robot_Speed / 2.0f;
     action->red_led = 1;
@@ -324,6 +315,7 @@ robot_State robot_fsm(robot_State state,
             }
             else if (event.elapsed_sim_time - internal->last_reverse > Reverse_Interval)
             {
+                internal->last_reverse = event.elapsed_sim_time;
                 TransitionTo(Reverse);
             }
             else if (event.elapsed_sim_time - internal->last_noise > Noise_Interval)
@@ -372,7 +364,6 @@ robot_State robot_fsm(robot_State state,
             }
             else if (event.elapsed_sim_time - internal->begin_reverse > Reverse_Length)
             {
-                internal->last_reverse = event.elapsed_sim_time;
                 TransitionTo(TargetRun);
             }
         } break;
