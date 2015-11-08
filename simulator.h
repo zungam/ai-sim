@@ -59,13 +59,10 @@ struct sim_State
     float obstacle_q[Num_Obstacles];  // angle relative x-axis
 
     float drone_x;     // x position
-    float drone_vx;    // x velocity
     float drone_y;     // y position
-    float drone_vy;    // y velocity
     float drone_z;     // height
-    float drone_phi;   // roll
-    float drone_theta; // pitch
-    float drone_psi;   // yaw
+    float drone_vx;    // x velocity
+    float drone_vy;    // y velocity
 
     // This is set to true once the drone has successfully
     // finished its given command. Some commands, like track,

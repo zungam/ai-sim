@@ -9,8 +9,7 @@
 // robots are moving so darn slow. Helps me
 // visualize the dynamics better by speeding
 // it up.
-#define SPEED_MULTIPLIER 1
-#define Magnet_Detection_Range 0.05f
+#define SPEED_MULTIPLIER 2
 
 #ifndef PI
 #define PI 3.14159265359f
@@ -45,6 +44,7 @@ struct sim_Robot
     float forward_x;
     float forward_y;
 
+    bool removed;
 };
 
 struct sim_Drone
@@ -275,6 +275,8 @@ advance_state(float dt)
 
     for (u32 i = 0; i < Num_Robots; i++)
     {
+        if (robots[i].removed) continue;
+
         events[i].is_run_sig = 0;
         events[i].is_wait_sig = 0;
         events[i].is_top_touch = 0;
@@ -309,7 +311,7 @@ advance_state(float dt)
         // the robot away so it no longer collides.
         for (u32 n = 0; n < Num_Robots; n++)
         {
-            if (i == n)
+            if (i == n || robots[n].removed)
             {
                 continue;
             }
@@ -419,7 +421,16 @@ advance_state(float dt)
 
     for (u32 i = 0; i < Num_Robots; i++)
     {
+        if (robots[i].removed)
+            continue;
         robot_integrate(&robots[i], dt);
+        if (robots[i].x < -10.5f ||
+            robots[i].x > +10.5f ||
+            robots[i].y < -10.5f ||
+            robots[i].y > +10.5f)
+        {
+            robots[i].removed = true;
+        }
         if (collision[i].hits > 0)
         {
             robots[i].x += collision[i].resolve_delta_x * 1.02f;
@@ -437,6 +448,7 @@ advance_state(float dt)
 void
 draw_robot(sim_Robot *r)
 {
+    if (r->removed) return;
     draw_circle(r->x, r->y, r->L * 0.5f);
     draw_line(r->x - r->tangent_x * r->L * 0.5f,
               r->y - r->tangent_y * r->L * 0.5f,
@@ -459,24 +471,11 @@ sim_load(VideoMode *mode)
     mode->stencil_bits = 8;
     mode->multisamples = 0;
     mode->swap_interval = 1;
-    printf("--load\n");
 }
 
 void
 sim_init(VideoMode mode)
 {
-    set_color(1.0f, 0.5f, 0.3f, 1.0f);
-    printf("--init\n");
-    printf("width: %d\n", mode.width);
-    printf("height: %d\n", mode.height);
-    printf("gl_major: %d\n", mode.gl_major);
-    printf("gl_minor: %d\n", mode.gl_minor);
-    printf("double_buffer: %d\n", mode.double_buffer);
-    printf("depth_bits: %d\n", mode.depth_bits);
-    printf("stencil_bits: %d\n", mode.stencil_bits);
-    printf("multisamples: %d\n", mode.multisamples);
-    printf("swap_interval: %d\n", mode.swap_interval);
-
     sim_init_msgs(true);
 
     targets = robots;
@@ -505,6 +504,7 @@ sim_init(VideoMode mode)
         robot.q = t;
         robot.internal.initialized = false;
         robot.state = Robot_Start;
+        robot.removed = false;
 
         targets[i] = robot;
     }
@@ -530,6 +530,7 @@ sim_init(VideoMode mode)
         robot.q = t + PI / 2.0f;
         robot.internal.initialized = false;
         robot.state = Robot_Start;
+        robot.removed = false;
 
         obstacles[i] = robot;
     }
@@ -541,7 +542,7 @@ sim_init(VideoMode mode)
     // too much about the exact dynamics, but the timing
     // information is pretty important.
     drone.zeta = 0.9f;
-    drone.w = 2.4f;
+    drone.w = 3.5f;
     drone.a = -0.03f;
     drone.x = 0.0f;
     drone.x1 = 0.0f;
@@ -555,7 +556,7 @@ sim_init(VideoMode mode)
     drone.z1 = 0.0f;
     drone.z2 = 0.0f;
     drone.zr = 1.5f;
-    drone.v_max = 3.0f;
+    drone.v_max = 2.0f;
     drone.cmd.type = sim_CommandType_Search;
     drone.cmd.x = 0.0f;
     drone.cmd.y = 0.0f;
@@ -566,6 +567,10 @@ sim_init(VideoMode mode)
 void
 sim_tick(VideoMode mode, float t, float dt)
 {
+    float aspect = mode.width/(float)mode.height;
+    float line_scale_x = aspect*12.0f;
+    float line_scale_y = 12.0f;
+
     // Poll for commands sent to the drone
     sim_Command cmd = {};
     if (sim_recv_cmd(&cmd))
@@ -575,6 +580,59 @@ sim_tick(VideoMode mode, float t, float dt)
         // drone response to various commands
         drone.cmd = cmd;
         drone.cmd_complete = 0;
+    }
+
+    const u08 *keys = SDL_GetKeyboardState(0);
+    s32 closest_target = 0;
+    float closest_target_d = 100.0f;
+    for (s32 i = 0; i < Num_Targets; i++)
+    {
+        float target_x = targets[i].x;
+        float target_y = targets[i].y;
+        float d = vector_length(target_x - drone.xr, target_y - drone.yr);
+        if (d <= closest_target_d)
+        {
+            closest_target_d = d;
+            closest_target = i;
+        }
+    }
+    if (keys[SDL_SCANCODE_LEFT])
+    {
+        drone.cmd.type = sim_CommandType_Search;
+        drone.cmd.x -= 5.0f * dt;
+    }
+    if (keys[SDL_SCANCODE_RIGHT])
+    {
+        drone.cmd.type = sim_CommandType_Search;
+        drone.cmd.x += 5.0f * dt;
+    }
+    if (keys[SDL_SCANCODE_UP])
+    {
+        drone.cmd.type = sim_CommandType_Search;
+        drone.cmd.y += 5.0f * dt;
+    }
+    if (keys[SDL_SCANCODE_DOWN])
+    {
+        drone.cmd.type = sim_CommandType_Search;
+        drone.cmd.y -= 5.0f * dt;
+    }
+    if (keys[SDL_SCANCODE_SPACE])
+    {
+        drone.cmd.type = sim_CommandType_LandInFrontOf;
+        drone.cmd.i = closest_target;
+        drone.cmd_complete = 0;
+    }
+    if (keys[SDL_SCANCODE_L])
+    {
+        drone.cmd.type = sim_CommandType_LandOnTopOf;
+        drone.cmd.i = closest_target;
+        drone.cmd_complete = 0;
+    }
+    if (drone.cmd.type == sim_CommandType_LandInFrontOf ||
+        drone.cmd.type == sim_CommandType_LandOnTopOf)
+    {
+        drone.cmd.x = drone.xr;
+        drone.cmd.y = drone.yr;
     }
 
     for (u32 i = 0; i < SPEED_MULTIPLIER; i++)
@@ -619,14 +677,13 @@ sim_tick(VideoMode mode, float t, float dt)
         sim_send_state(&state);
     }
 
-    r32 a = mode.width/(r32)mode.height;
     glViewport(0, 0, mode.width, mode.height);
     glClearColor(0.05f, 0.03f, 0.01f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     glLineWidth(2.0f);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    set_scale(a*12.0f, 12.0f);
+    set_scale(line_scale_x, line_scale_y);
 
     glBegin(GL_TRIANGLES);
     {
@@ -651,9 +708,7 @@ sim_tick(VideoMode mode, float t, float dt)
             draw_line(-10.0f, x, +10.0f, x);
         }
 
-        set_color(1.0f, 0.3f, 0.1f, 0.45f);
-        draw_line(-10.0f, -10.0f, -10.0f, +10.0f);
-
+        // draw green line
         set_color(0.1f, 1.0f, 0.3f, 0.45f);
         draw_line(+10.0f, -10.0f, +10.0f, +10.0f);
 
@@ -675,8 +730,8 @@ sim_tick(VideoMode mode, float t, float dt)
                   drone.x, drone.y + 0.5f);
 
         // draw drone goto
-        set_color(0.33f, 0.55f, 0.53f, 0.5f);
-        draw_circle(drone.xr, drone.yr, 0.25f);
+        set_color(0.2f, 0.5f, 1.0f, 0.5f);
+        draw_circle(drone.xr, drone.yr, 0.45f);
 
         // draw indicators of magnet or bumper activations
         for (u32 i = 0; i < Num_Targets; i++)
@@ -694,17 +749,6 @@ sim_tick(VideoMode mode, float t, float dt)
                 draw_circle(x, y, 0.5f);
             }
         }
-
-        // draw drone height "reference sheet"
-        set_scale(a*12.0f, 4.0f);
-        set_color(0.34f, 0.4f, 0.49f, 1.0f);
-        draw_line(-11.0f, 0.0f, -10.5f, 0.0f); // ground plane level
-        set_color(0.75f, 0.2f, 0.26f, 1.0f);
-        draw_line(-11.0f, 0.1f, -10.5f, 0.1f); // height of target
-        set_color(0.71f, 0.7f, 0.07f, 1.0f);
-        draw_line(-11.0f, 2.0f, -10.5f, 2.0f); // height of obstacle
-        set_color(0.33f, 0.55f, 0.53f, 1.0f);
-        draw_line(-11.0f, drone.z, -10.5f, drone.z); // height of drone
     }
     glEnd();
 }
