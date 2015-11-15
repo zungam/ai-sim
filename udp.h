@@ -19,6 +19,7 @@ To create the implementation in one source file include this header:
 #ifndef UDP_HEADER_INCLUDE
 #define UDP_HEADER_INCLUDE
 #include <stdint.h>
+#include <cstring> // for memcpy
 #ifndef UDP_ASSERT
 #include <cassert>
 #define UDP_ASSERT assert

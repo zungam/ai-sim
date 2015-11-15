@@ -9,7 +9,7 @@
 // robots are moving so darn slow. Helps me
 // visualize the dynamics better by speeding
 // it up.
-#define SPEED_MULTIPLIER 2
+#define SPEED_MULTIPLIER 1
 
 #ifndef PI
 #define PI 3.14159265359f
