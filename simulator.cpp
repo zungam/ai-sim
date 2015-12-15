@@ -24,6 +24,29 @@ global Color _line_color;
 global float _line_scale_x;
 global float _line_scale_y;
 
+// return: A random number with a period of (2^128) - 1
+// more:   http://en.wikipedia.org/wiki/Xorshift
+unsigned int
+xor128()
+{
+    static unsigned int x = 123456789;
+    static unsigned int y = 362436069;
+    static unsigned int z = 521288629;
+    static unsigned int w = 88675123;
+    unsigned int t;
+
+    t = x ^ (x << 11);
+    x = y; y = z; z = w;
+    return w = w ^ (w >> 19) ^ (t ^ (t >>8));
+}
+
+// return: A uniformly distributed value in [0.0f, 1.0f]
+float
+frand()
+{
+    return xor128() / float(4294967295.0f);
+}
+
 struct sim_Robot
 {
     robot_State state;
@@ -76,6 +99,21 @@ struct sim_Drone
 
     sim_Command cmd; // current active command
     bool cmd_complete;
+
+    // These variables are strictly used when observing
+    // the drone state, and do not affect the internal
+    // simulation:
+
+    // The drone's position measurement has statistical
+    // uncertainty. I'm going to assume that our Perception
+    // group has managed to give us an estimate which does
+    // not have high frequency noise on top. I will however
+    // assume that there may be significant bias in the
+    // estimate, in the order of a couple of tiles.
+    // I'll assume that the bias in one of the coordinates
+    // may be reset whenever the drone sees an edge.
+    float bias_x;
+    float bias_y;
 };
 
 #define Num_Robots (Num_Targets + Num_Obstacles)
@@ -153,9 +191,6 @@ robot_observe_state(sim_Robot *robot,
                          float *out_vy,
                          float *out_q)
 {
-    // TODO: Add statistical uncertainty
-    // TODO: Might need multiple states to
-    // fully simulate statistical properties.
     float v = 0.5f * (robot->vl + robot->vr);
     *out_x = robot->x;
     *out_y = robot->y;
@@ -473,6 +508,19 @@ sim_load(VideoMode *mode)
     mode->swap_interval = 1;
 }
 
+float
+compute_camera_view_radius(float height_above_ground)
+{
+    // Interpolates between 0.5 meters and
+    // 3 meters view radius when height goes
+    // from 0 to 3 meters.
+    float h0 = 0.0f;
+    float h1 = 3.0f;
+    float alpha = (drone.z - h0) / (h1 - h0);
+    float view_radius = 0.5f + 2.5f * alpha;
+    return view_radius;
+}
+
 void
 sim_init(VideoMode mode)
 {
@@ -562,6 +610,8 @@ sim_init(VideoMode mode)
     drone.cmd.y = 0.0f;
     drone.cmd.i = 0;
     drone.cmd_complete = 0;
+    drone.bias_x = 0.0f;
+    drone.bias_y = 0.0f;
 }
 
 void
@@ -643,38 +693,122 @@ sim_tick(VideoMode mode, float t, float dt)
         advance_state(dt);
     }
 
-    // Send a test package once per second
-    persist r32 udp_send_timer = 1.0f;
-    udp_send_timer -= dt;
-    if (udp_send_timer <= 0.0f)
+    // Every _drone_bias_timer_ seconds there is a
+    // probability of a bias being added to the
+    // estimated drone position, in either coordinate,
+    // of one grid cell in meters.
+    persist r32 drone_bias_timer = 0.5f;
+    r32 drone_bias_probability = 0.5f;
+    drone_bias_timer -= dt;
+    if (drone_bias_timer <= 0.0f)
     {
-        udp_send_timer = 1.0f;
+        float p = frand();
+        if (p <= drone_bias_probability)
+        {
+            float random_meters;
+            float p2 = frand();
+            if (p2 < 0.5f)
+                random_meters = -1.0f;
+            else
+                random_meters = +1.0f;
+
+            if (p <= drone_bias_probability * 0.5f)
+                drone.bias_x += random_meters;
+            else
+                drone.bias_y += random_meters;
+        }
+        drone_bias_timer = 2.0f;
+    }
+
+    // Bias is eliminated in atleast one coordinate
+    // if the drone detects an edge of the map.
+    float drone_view_radius = compute_camera_view_radius(drone.z);
+    if (abs(drone.x - 10.0f) < drone_view_radius ||
+        abs(drone.x + 10.0f) < drone_view_radius)
+        drone.bias_x = 0.0f;
+    if (abs(drone.y - 10.0f) < drone_view_radius ||
+        abs(drone.y + 10.0f) < drone_view_radius)
+        drone.bias_y = 0.0f;
+
+    // How often we send a state measurement
+    persist r32 state_send_timer = 1.0f;
+
+    state_send_timer -= dt;
+    if (state_send_timer <= 0.0f)
+    {
+        state_send_timer = 1.0f;
         sim_State state = {};
         state.elapsed_sim_time = t;
 
-        state.drone_x = drone.x;
-        state.drone_y = drone.y;
+        state.drone_x = drone.x + drone.bias_x;
+        state.drone_y = drone.y + drone.bias_y;
         state.drone_z = drone.z;
         state.drone_cmd_complete = drone.cmd_complete;
 
         for (u32 i = 0; i < Num_Targets; i++)
         {
-            robot_observe_state(&targets[i],
-                                &state.target_x[i],
-                                &state.target_y[i],
-                                &state.target_vx[i],
-                                &state.target_vy[i],
-                                &state.target_q[i]);
+            // I'll assume that we have pretty much given up on
+            // tracking robots that are further away than a given
+            // radius
+            float observation_radius = compute_camera_view_radius(drone.z);
+            float dist = vector_length(targets[i].x - drone.x,
+                                       targets[i].y - drone.y);
+            if (dist < observation_radius)
+            {
+                robot_observe_state(&targets[i],
+                                    &state.target_x[i],
+                                    &state.target_y[i],
+                                    &state.target_vx[i],
+                                    &state.target_vy[i],
+                                    &state.target_q[i]);
+                state.target_in_view[i] = true;
+            }
+            else
+            {
+                state.target_in_view[i] = false;
+            }
         }
 
         for (u32 i = 0; i < Num_Obstacles; i++)
         {
+            // I'll assume that we have a laser mounted on top
+            // of the quad which actually observes the position
+            // of the tower robots reasonably.
             robot_observe_state(&targets[i],
                                 &state.obstacle_x[i],
                                 &state.obstacle_y[i],
                                 &state.obstacle_vx[i],
                                 &state.obstacle_vy[i],
                                 &state.obstacle_q[i]);
+
+            // I am however going to assume that there may be
+            // some bias to these estimates as well. The reason
+            // for this is that the tower robots may not move
+            // entirely in a perfect circle; they may collide,
+            // stop a bit, get pushed, delayed, and so on.
+            // Furthermore, because our own position estimate
+            // is biased - and a laser would measure the relative
+            // distance from us to them - I'll assume that their
+            // measurement is also biased.
+
+            // As I'm writing this I am however seeing potential
+            // for a Kalman filter which incorporates a large
+            // trust in estimating _our_ position from the
+            // tower robots:
+
+            // If the tower robots will - usually - move 0.33
+            // meters per second in a curve of constant curvature,
+            // then we can predict where they will be from a
+            // sequence of previous measurements. Given our
+            // relative laser measurement, we should then be
+            // able to sort of triangulate our position based
+            // on them.
+
+            // Actually. I'm just going to use the relative
+            // distance in my AI algorithm anyway.
+
+            state.obstacle_rel_x[i] = state.obstacle_x[i] - state.drone_x;
+            state.obstacle_rel_y[i] = state.obstacle_y[i] - state.drone_y;
         }
 
         sim_send_state(&state);
@@ -691,12 +825,9 @@ sim_tick(VideoMode mode, float t, float dt)
     glBegin(GL_TRIANGLES);
     {
         // draw visible region
-        float h0 = 0.0f;
-        float h1 = 3.0f;
-        float alpha = (drone.z - h0) / (h1 - h0);
-        float visible_radius = 0.5f + 3.0f * alpha + 2.5f * alpha * alpha;
         glColor4f(0.34f, 0.4f, 0.49f, 0.15f);
-        fill_circle(drone.x, drone.y, visible_radius);
+        fill_circle(drone.x, drone.y,
+                    compute_camera_view_radius(drone.z));
     }
     glEnd();
 
@@ -731,6 +862,13 @@ sim_tick(VideoMode mode, float t, float dt)
                   drone.x + 0.5f, drone.y);
         draw_line(drone.x, drone.y - 0.5f,
                   drone.x, drone.y + 0.5f);
+
+        // draw measured drone position
+        set_color(0.33f, 0.55f, 0.53f, 0.5f);
+        draw_line(drone.x + drone.bias_x - 0.5f, drone.y + drone.bias_y,
+                  drone.x + drone.bias_x + 0.5f, drone.y + drone.bias_y);
+        draw_line(drone.x + drone.bias_x, drone.y + drone.bias_y - 0.5f,
+                  drone.x + drone.bias_x, drone.y + drone.bias_y + 0.5f);
 
         // draw drone goto
         set_color(0.2f, 0.5f, 1.0f, 0.5f);

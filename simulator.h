@@ -46,14 +46,29 @@ struct sim_State
 {
     float elapsed_sim_time;
 
+    // Coordinate system is defined this way
+    // x=+10      x=+10
+    // y=+10      y=-10
+    //   +----------+
+    //   |  GREEN   | ^
+    //   |          | |
+    //   |          | | Positive x-axis
+    //   |   RED    | |
+    //   +----------+
+    // x=-10      x=-10
+    // y=+10      y=-10
+
     float target_x[Num_Targets];  // x position
     float target_y[Num_Targets];  // y position
     float target_vx[Num_Targets]; // x velocity
     float target_vy[Num_Targets]; // y velocity
     float target_q[Num_Targets];  // angle relative x-axis
+    bool  target_in_view[Num_Targets]; // True if target currently in view
 
     float obstacle_x[Num_Obstacles];  // x position
     float obstacle_y[Num_Obstacles];  // y position
+    float obstacle_rel_x[Num_Obstacles]; // x position relative drone
+    float obstacle_rel_y[Num_Obstacles]; // y position relative drone
     float obstacle_vx[Num_Obstacles]; // x velocity
     float obstacle_vy[Num_Obstacles]; // y velocity
     float obstacle_q[Num_Obstacles];  // angle relative x-axis
