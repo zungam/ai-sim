@@ -697,7 +697,7 @@ sim_tick(VideoMode mode, float t, float dt)
     // probability of a bias being added to the
     // estimated drone position, in either coordinate,
     // of one grid cell in meters.
-    persist r32 drone_bias_timer = 0.5f;
+    persist r32 drone_bias_timer = 2.0f;
     r32 drone_bias_probability = 0.5f;
     drone_bias_timer -= dt;
     if (drone_bias_timer <= 0.0f)
@@ -740,9 +740,8 @@ sim_tick(VideoMode mode, float t, float dt)
         sim_State state = {};
         state.elapsed_sim_time = t;
 
-        state.drone_x = drone.x + drone.bias_x;
-        state.drone_y = drone.y + drone.bias_y;
-        state.drone_z = drone.z;
+        state.drone_tile_x = int(drone.x + drone.bias_x);
+        state.drone_tile_y = int(drone.y + drone.bias_y);
         state.drone_cmd_complete = drone.cmd_complete;
 
         for (u32 i = 0; i < Num_Targets; i++)
@@ -755,12 +754,13 @@ sim_tick(VideoMode mode, float t, float dt)
                                        targets[i].y - drone.y);
             if (dist < observation_radius)
             {
-                robot_observe_state(&targets[i],
-                                    &state.target_x[i],
-                                    &state.target_y[i],
-                                    &state.target_vx[i],
-                                    &state.target_vy[i],
-                                    &state.target_q[i]);
+                float x, y, q, vx, vy;
+                robot_observe_state(&targets[i], &x, &y, &vx, &vy, &q);
+                if (targets[i].state == Robot_Reverse)
+                    state.target_reversing[i] = true;
+                else
+                    state.target_reversing[i] = false;
+                state.target_q[i] = q;
                 state.target_in_view[i] = true;
             }
             else
@@ -774,12 +774,8 @@ sim_tick(VideoMode mode, float t, float dt)
             // I'll assume that we have a laser mounted on top
             // of the quad which actually observes the position
             // of the tower robots reasonably.
-            robot_observe_state(&targets[i],
-                                &state.obstacle_x[i],
-                                &state.obstacle_y[i],
-                                &state.obstacle_vx[i],
-                                &state.obstacle_vy[i],
-                                &state.obstacle_q[i]);
+            float x, y, q, vx, vy;
+            robot_observe_state(&obstacles[i], &x, &y, &vx, &vy, &q);
 
             // I am however going to assume that there may be
             // some bias to these estimates as well. The reason
@@ -807,8 +803,8 @@ sim_tick(VideoMode mode, float t, float dt)
             // Actually. I'm just going to use the relative
             // distance in my AI algorithm anyway.
 
-            state.obstacle_rel_x[i] = state.obstacle_x[i] - state.drone_x;
-            state.obstacle_rel_y[i] = state.obstacle_y[i] - state.drone_y;
+            state.obstacle_rel_x[i] = x - drone.x;
+            state.obstacle_rel_y[i] = y - drone.y;
         }
 
         sim_send_state(&state);
@@ -828,6 +824,12 @@ sim_tick(VideoMode mode, float t, float dt)
         glColor4f(0.34f, 0.4f, 0.49f, 0.15f);
         fill_circle(drone.x, drone.y,
                     compute_camera_view_radius(drone.z));
+
+        glColor4f(0.34f, 0.4f, 0.49f, 0.35f);
+        // glColor4f(0.95f, 0.3f, 0.2f, 0.15f);
+        float tile_x = (float)((int)(drone.x + drone.bias_x) + 0.5f);
+        float tile_y = (float)((int)(drone.y + drone.bias_y) + 0.5f);
+        fill_circle(tile_x, tile_y, 0.5f);
     }
     glEnd();
 
@@ -864,11 +866,11 @@ sim_tick(VideoMode mode, float t, float dt)
                   drone.x, drone.y + 0.5f);
 
         // draw measured drone position
-        set_color(0.33f, 0.55f, 0.53f, 0.5f);
-        draw_line(drone.x + drone.bias_x - 0.5f, drone.y + drone.bias_y,
-                  drone.x + drone.bias_x + 0.5f, drone.y + drone.bias_y);
-        draw_line(drone.x + drone.bias_x, drone.y + drone.bias_y - 0.5f,
-                  drone.x + drone.bias_x, drone.y + drone.bias_y + 0.5f);
+        // set_color(0.33f, 0.55f, 0.53f, 0.5f);
+        // draw_line(drone.x + drone.bias_x - 0.5f, drone.y + drone.bias_y,
+        //           drone.x + drone.bias_x + 0.5f, drone.y + drone.bias_y);
+        // draw_line(drone.x + drone.bias_x, drone.y + drone.bias_y - 0.5f,
+        //           drone.x + drone.bias_x, drone.y + drone.bias_y + 0.5f);
 
         // draw drone goto
         set_color(0.2f, 0.5f, 1.0f, 0.5f);
