@@ -631,6 +631,9 @@ sim_tick(VideoMode mode, float t, float dt)
     if (drone.cmd.type == sim_CommandType_LandInFrontOf ||
         drone.cmd.type == sim_CommandType_LandOnTopOf)
     {
+        // Need to synchronize these when keyboard input is used,
+        // otherwise we get a jarring jump in the drawn circle
+        // when you use keyboard after performing a land command.
         drone.cmd.x = drone.xr;
         drone.cmd.y = drone.yr;
     }
