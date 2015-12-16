@@ -23,8 +23,8 @@
 
 struct Color { float r, g, b, a; };
 global Color _line_color;
-global float _line_scale_x;
-global float _line_scale_y;
+global float _ndc_scale_x;
+global float _ndc_scale_y;
 
 // return: A random number with a period of (2^128) - 1
 // more:   http://en.wikipedia.org/wiki/Xorshift
@@ -49,14 +49,24 @@ frand()
     return xor128() / float(4294967295.0f);
 }
 
+void
+world_to_ndc(float x_world, float y_world,
+             float *x_ndc, float *y_ndc)
+{
+    float x = (x_world - 10.0f) * _ndc_scale_x;
+    float y = (y_world - 10.0f) * _ndc_scale_y;
+    *x_ndc = x;
+    *y_ndc = y;
+}
+
 struct sim_Robot
 {
     robot_State state;
     robot_Internal internal;
     robot_Action action;
 
-    float x;  // x-position relative center of floor (m)
-    float y;  // y-position relative center of floor (m)
+    float x;  // x position in world frame (m)
+    float y;  // y position in world frame (m)
     float L;  // distance between wheels (m)
     float vl; // left-wheel speed (m/s)
     float vr; // right-wheel speed (m/s)
@@ -89,8 +99,8 @@ struct sim_Drone
     float z1;
     float z2;
 
-    float x; // x-position relative center of floor (m)
-    float y; // y-position relative center of floor (m)
+    float x; // x-position in world frame (m)
+    float y; // y-position in world frame (m)
     float z; // height from ground (m)
 
     float xr; // target x-position (m)
@@ -132,35 +142,36 @@ set_color(float r, float g, float b, float a)
 }
 
 void
-set_scale(float x, float y)
-{
-    _line_scale_x = x;
-    _line_scale_y = y;
-}
-
-void
 draw_line(float x1, float y1, float x2, float y2)
 {
+    float x1n, y1n, x2n, y2n;
+    world_to_ndc(x1, y1, &x1n, &y1n);
+    world_to_ndc(x2, y2, &x2n, &y2n);
     glColor4f(_line_color.r, _line_color.g, _line_color.b, _line_color.a);
-    glVertex2f(x1 / _line_scale_x, y1 / _line_scale_y);
+    glVertex2f(x1n, y1n);
     glColor4f(_line_color.r, _line_color.g, _line_color.b, _line_color.a);
-    glVertex2f(x2 / _line_scale_x, y2 / _line_scale_y);
+    glVertex2f(x2n, y2n);
 }
 
 void
 fill_square(float x1, float y1, float x2, float y2)
 {
-    glVertex2f(x1 / _line_scale_x, y1 / _line_scale_y);
-    glVertex2f(x2 / _line_scale_x, y1 / _line_scale_y);
-    glVertex2f(x2 / _line_scale_x, y2 / _line_scale_y);
-    glVertex2f(x2 / _line_scale_x, y2 / _line_scale_y);
-    glVertex2f(x1 / _line_scale_x, y2 / _line_scale_y);
-    glVertex2f(x1 / _line_scale_x, y1 / _line_scale_y);
+    float x1n, y1n, x2n, y2n;
+    world_to_ndc(x1, y1, &x1n, &y1n);
+    world_to_ndc(x2, y2, &x2n, &y2n);
+    glVertex2f(x1n, y1n);
+    glVertex2f(x2n, y1n);
+    glVertex2f(x2n, y2n);
+    glVertex2f(x2n, y2n);
+    glVertex2f(x1n, y2n);
+    glVertex2f(x1n, y1n);
 }
 
 void
 fill_circle(float x, float y, float r)
 {
+    float xn, yn;
+    world_to_ndc(x, y, &xn, &yn);
     u32 n = 32;
     for (u32 i = 0; i < n; i++)
     {
@@ -170,12 +181,15 @@ fill_circle(float x, float y, float r)
         float y1 = y + r*sin(t1);
         float x2 = x + r*cos(t2);
         float y2 = y + r*sin(t2);
-        glVertex2f(x / _line_scale_x, y / _line_scale_y);
-        glVertex2f(x1 / _line_scale_x, y1 / _line_scale_y);
-        glVertex2f(x2 / _line_scale_x, y2 / _line_scale_y);
-        glVertex2f(x2 / _line_scale_x, y2 / _line_scale_y);
-        glVertex2f(x / _line_scale_x, y / _line_scale_y);
-        glVertex2f(x / _line_scale_x, y / _line_scale_y);
+        float x1n, y1n, x2n, y2n;
+        world_to_ndc(x1, y1, &x1n, &y1n);
+        world_to_ndc(x2, y2, &x2n, &y2n);
+        glVertex2f(xn, yn);
+        glVertex2f(x1n, y1n);
+        glVertex2f(x2n, y2n);
+        glVertex2f(x2n, y2n);
+        glVertex2f(xn, yn);
+        glVertex2f(xn, yn);
     }
 }
 
@@ -191,7 +205,6 @@ draw_circle(float x, float y, float r)
         float y1 = y + r*sin(t1);
         float x2 = x + r*cos(t2);
         float y2 = y + r*sin(t2);
-
         draw_line(x1, y1, x2, y2);
     }
 }
@@ -272,18 +285,18 @@ robot_integrate(sim_Robot *robot, float dt)
     float w = (robot->vr - robot->vl) / (robot->L*0.5f);
     #if 0
     // Simplified dynamics
-    // robot->x += -v * sin(robot->q) * dt;
-    // robot->y +=  v * cos(robot->q) * dt;
+    robot->x += v * cos(robot->q) * dt;
+    robot->y += v * sin(robot->q) * dt;
     #else
     if (abs(w) < 0.001f)
     {
-        robot->x += -v*sin(robot->q)*dt;
-        robot->y +=  v*cos(robot->q)*dt;
+        robot->x += v*cos(robot->q)*dt;
+        robot->y += v*sin(robot->q)*dt;
     }
     else
     {
-        robot->x += (v / w) * (cos(robot->q + w*dt) - cos(robot->q));
-        robot->y += (v / w) * (sin(robot->q + w*dt) - sin(robot->q));
+        robot->x += (v / w) * (sin(robot->q + w*dt) - sin(robot->q));
+        robot->y -= (v / w) * (cos(robot->q + w*dt) - cos(robot->q));
     }
     #endif
     robot->q += w * dt;
@@ -291,10 +304,10 @@ robot_integrate(sim_Robot *robot, float dt)
     while (robot->q >= TWO_PI)
         robot->q -= TWO_PI;
 
-    robot->tangent_x = cos(robot->q);
-    robot->tangent_y = sin(robot->q);
-    robot->forward_x = -robot->tangent_y;
-    robot->forward_y =  robot->tangent_x;
+    robot->forward_x = cos(robot->q);
+    robot->forward_y = sin(robot->q);
+    robot->tangent_x = -sin(robot->q);
+    robot->tangent_y = cos(robot->q);
 }
 
 float
@@ -472,10 +485,10 @@ advance_state(float dt)
         if (robots[i].removed)
             continue;
         robot_integrate(&robots[i], dt);
-        if (robots[i].x < -10.5f ||
-            robots[i].x > +10.5f ||
-            robots[i].y < -10.5f ||
-            robots[i].y > +10.5f)
+        if (robots[i].x < -0.5f ||
+            robots[i].x > 20.5f ||
+            robots[i].y < -0.5f ||
+            robots[i].y > 20.0f)
         {
             robots[i].removed = true;
         }
@@ -560,8 +573,8 @@ sim_init(VideoMode mode)
 
         // Spawn each ground robot in a circle
         float t = TWO_PI * i / (float)(Num_Targets);
-        robot.x = -1.0f * sin(t);
-        robot.y = 1.0f * cos(t);
+        robot.x = 10.0f + 1.0f * cos(t);
+        robot.y = 10.0f + 1.0f * sin(t);
         robot.q = t;
         robot.internal.initialized = false;
         robot.state = Robot_Start;
@@ -586,8 +599,8 @@ sim_init(VideoMode mode)
 
         // The obstacles are also spawned in a circle,
         // but at an initial radius of 5 meters.
-        robot.x = -5.0f * sin(t);
-        robot.y = 5.0f * cos(t);
+        robot.x = 10.0f + 5.0f * cos(t);
+        robot.y = 10.0f + 5.0f * sin(t);
         robot.q = t + PI / 2.0f;
         robot.internal.initialized = false;
         robot.state = Robot_Start;
@@ -605,22 +618,22 @@ sim_init(VideoMode mode)
     drone.zeta = 0.9f;
     drone.w = 3.5f;
     drone.a = -0.03f;
-    drone.x = 0.0f;
+    drone.xr = 10.0f;
+    drone.yr = 10.0f;
+    drone.x = 10.0f;
     drone.x1 = 0.0f;
-    drone.x2 = 0.0f;
-    drone.y = 0.0f;
+    drone.x2 = drone.xr / (drone.w*drone.w);
+    drone.y = 10.0f;
     drone.y1 = 0.0f;
-    drone.y2 = 0.0f;
-    drone.xr = 0.0f;
-    drone.yr = 0.0f;
+    drone.y2 = drone.yr / (drone.w*drone.w);
     drone.z = 1.0f;
     drone.z1 = 0.0f;
     drone.z2 = 0.0f;
     drone.zr = 1.5f;
     drone.v_max = 2.0f;
     drone.cmd.type = sim_CommandType_Search;
-    drone.cmd.x = 0.0f;
-    drone.cmd.y = 0.0f;
+    drone.cmd.x = 10.0f;
+    drone.cmd.y = 10.0f;
     drone.cmd.i = 0;
     drone.cmd_complete = 0;
     drone.bias_x = 0.0f;
@@ -630,9 +643,8 @@ sim_init(VideoMode mode)
 void
 sim_tick(VideoMode mode, float t, float dt)
 {
-    float aspect = mode.width/(float)mode.height;
-    float line_scale_x = aspect*12.0f;
-    float line_scale_y = 12.0f;
+    _ndc_scale_x = (1.0f / 12.0f) * mode.height / (float)mode.width;
+    _ndc_scale_y = 1.0f / 12.0f;
 
     persist debug_UserData userdata;
 
@@ -743,11 +755,11 @@ sim_tick(VideoMode mode, float t, float dt)
     // Bias is eliminated in atleast one coordinate
     // if the drone detects an edge of the map.
     float drone_view_radius = compute_camera_view_radius(drone.z);
-    if (abs(drone.x - 10.0f) < drone_view_radius ||
-        abs(drone.x + 10.0f) < drone_view_radius)
+    if (abs(drone.x -  0.0f) < drone_view_radius ||
+        abs(drone.x - 20.0f) < drone_view_radius)
         drone.bias_x = 0.0f;
-    if (abs(drone.y - 10.0f) < drone_view_radius ||
-        abs(drone.y + 10.0f) < drone_view_radius)
+    if (abs(drone.y -  0.0f) < drone_view_radius ||
+        abs(drone.y - 20.0f) < drone_view_radius)
         drone.bias_y = 0.0f;
 
     // How often we send a state measurement
@@ -760,8 +772,10 @@ sim_tick(VideoMode mode, float t, float dt)
         sim_State state = {};
         state.elapsed_sim_time = t;
 
-        state.drone_tile_x = int(10.0f + drone.x + drone.bias_x);
-        state.drone_tile_y = int(10.0f + drone.y + drone.bias_y);
+        world_to_tile(drone.x + drone.bias_x,
+                      drone.y + drone.bias_y,
+                      &state.drone_tile_x,
+                      &state.drone_tile_y);
         state.drone_cmd_complete = drone.cmd_complete;
 
         for (u32 i = 0; i < Num_Targets; i++)
@@ -796,33 +810,6 @@ sim_tick(VideoMode mode, float t, float dt)
             // of the tower robots reasonably.
             float x, y, q, vx, vy;
             robot_observe_state(&obstacles[i], &x, &y, &vx, &vy, &q);
-
-            // I am however going to assume that there may be
-            // some bias to these estimates as well. The reason
-            // for this is that the tower robots may not move
-            // entirely in a perfect circle; they may collide,
-            // stop a bit, get pushed, delayed, and so on.
-            // Furthermore, because our own position estimate
-            // is biased - and a laser would measure the relative
-            // distance from us to them - I'll assume that their
-            // measurement is also biased.
-
-            // As I'm writing this I am however seeing potential
-            // for a Kalman filter which incorporates a large
-            // trust in estimating _our_ position from the
-            // tower robots:
-
-            // If the tower robots will - usually - move 0.33
-            // meters per second in a curve of constant curvature,
-            // then we can predict where they will be from a
-            // sequence of previous measurements. Given our
-            // relative laser measurement, we should then be
-            // able to sort of triangulate our position based
-            // on them.
-
-            // Actually. I'm just going to use the relative
-            // distance in my AI algorithm anyway.
-
             state.obstacle_rel_x[i] = x - drone.x;
             state.obstacle_rel_y[i] = y - drone.y;
         }
@@ -836,7 +823,6 @@ sim_tick(VideoMode mode, float t, float dt)
     glLineWidth(2.0f);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    set_scale(line_scale_x, line_scale_y);
 
     glBegin(GL_TRIANGLES);
     {
@@ -845,10 +831,9 @@ sim_tick(VideoMode mode, float t, float dt)
         {
             for (u32 yi = 0; yi < 20; yi++)
             {
-                float x1 = -10.0f + 20.0f * (xi / 20.0f);
-                float y1 = -10.0f + 20.0f * (yi / 20.0f);
-                float x2 = -10.0f + 20.0f * ((xi + 1) / 20.0f);
-                float y2 = -10.0f + 20.0f * ((yi + 1) / 20.0f);
+                float x1, y1, x2, y2;
+                tile_to_world(xi, yi, &x1, &y1);
+                tile_to_world(xi+1, yi+1, &x2, &y2);
                 float s = (float)userdata.strength[yi][xi] / 255.0f;
                 float r = 0.5f + 0.5f*sin(6.2832f*(0.3f*s+0.8f));
                 float g = 0.5f + 0.5f*sin(6.2832f*(0.5f*s+0.9f));
@@ -866,9 +851,13 @@ sim_tick(VideoMode mode, float t, float dt)
 
         // draw biased drone position
         glColor4f(0.34f, 0.4f, 0.49f, 0.35f);
-        float tile_x = (float)((int)(10.0f + drone.x + drone.bias_x) + 0.5f);
-        float tile_y = (float)((int)(10.0f + drone.y + drone.bias_y) + 0.5f);
-        fill_circle(-10.0f+tile_x, -10.0f+tile_y, 0.5f);
+        int tile_x, tile_y;
+        float draw_x, draw_y;
+        world_to_tile(drone.x + drone.bias_x,
+                      drone.y + drone.bias_y,
+                      &tile_x, &tile_y);
+        tile_to_world(tile_x, tile_y, &draw_x, &draw_y);
+        fill_circle(draw_x+0.5f, draw_y+0.5f, 0.5f);
     }
     glEnd();
 
@@ -878,14 +867,14 @@ sim_tick(VideoMode mode, float t, float dt)
         set_color(0.0f, 0.0f, 0.0f, 0.45f);
         for (u32 i = 0; i <= 20; i++)
         {
-            float x = (-1.0f + 2.0f * i / 20.0f) * 10.0f;
-            draw_line(x, -10.0f, x, +10.0f);
-            draw_line(-10.0f, x, +10.0f, x);
+            float x = (float)i;
+            draw_line(x, 0.0f, x, 20.0f);
+            draw_line(0.0f, x, 20.0f, x);
         }
 
         // draw green line
         set_color(0.1f, 1.0f, 0.3f, 0.45f);
-        draw_line(+10.0f, -10.0f, +10.0f, +10.0f);
+        draw_line(0.0f, 20.0f, 20.0f, 20.0f);
 
         // draw targets
         set_color(0.75f, 0.2f, 0.26f, 1.0f);

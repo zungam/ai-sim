@@ -46,45 +46,37 @@ struct sim_State
 {
     float elapsed_sim_time;
 
-    // Coordinate system is defined this way
-    // x=+10      x=+10
-    // y=+10      y=-10
-    //   +----------+
-    //   |  GREEN   |
-    //   |          |
-    //   |          |
-    //   |   RED    |
-    //   +----------+
-    // x=-10      x=-10
-    // y=+10      y=-10
-    //
-    //              ^
-    //              |
-    //              | Positive x-axis
-    //              |
-    //     <--------+
-    //  Positive y-axis
+    // World-space coordinate system
+    // x=0        x=20
+    // y=20       y=20
+    //  +----------+  ^ +y
+    //  |  GREEN   |  |
+    //  |          |  |
+    //  |          |  |
+    //  |   RED    |  |
+    //  +----------+  +-------> +x
+    // x=0        x=20
+    // y=0        y=0
 
-    // In tiles
-    // x=19       x=19
-    // y=19       y=0
-    //   +----------+
-    //   |  GREEN   |
-    //   |          |
-    //   |          |
-    //   |   RED    |
-    //   +----------+
-    // x=0         x=0
-    // y=19        y=0
+    // Tile-space coordinate system
+    // x=0        x=19
+    // y=19       y=19
+    //  +----------+  ^ +y
+    //  |  GREEN   |  |
+    //  |          |  |
+    //  |          |  |
+    //  |   RED    |  |
+    //  +----------+  +-------> +x
+    // x=0        x=19
+    // y=0        y=0
 
     // Only targets in view get their fields updated.
     bool  target_in_view[Num_Targets];   // True if target currently in view
     bool  target_reversing[Num_Targets]; // True if target currently reversing
     float target_q[Num_Targets];         // Angle relative x-axis
-    float obstacle_rel_x[Num_Obstacles]; // x coordinate relative drone
-    float obstacle_rel_y[Num_Obstacles]; // y coordinate relative drone
+    float obstacle_rel_x[Num_Obstacles]; // x position relative drone
+    float obstacle_rel_y[Num_Obstacles]; // y position relative drone
     int   drone_tile_x;                  // x position in tiles
-                                         // (i.e. integers from 0 to 19)
     int   drone_tile_y;                  // y position in tiles
 
     // This is set to true once the drone has successfully
@@ -122,6 +114,28 @@ struct sim_Command
 
     debug_UserData userdata;
 };
+
+// Coordinate system transformations
+
+void
+tile_to_world(int x_tile, int y_tile,
+              float *x_world, float *y_world)
+{
+    float x = (float)x_tile;
+    float y = (float)y_tile;
+    *x_world = x;
+    *y_world = y;
+}
+
+void
+world_to_tile(float x_world, float y_world,
+              int *x_tile, int *y_tile)
+{
+    int x = (int)x_world;
+    int y = (int)y_world;
+    *x_tile = x;
+    *y_tile = y;
+}
 
 #define UDP_IMPLEMENTATION
 #include "udp.h"

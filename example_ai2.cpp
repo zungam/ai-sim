@@ -154,9 +154,7 @@ void hidden_belief_update(Belief *a,
     float e = exp(-forget_rate*(elapsed_time - time_since_last_seen));
     float sx = 8.0f * e + 16.0f * (1.0f - e);
     float sy = 1.4f * e + 2.8f * (1.0f - e);
-    // TODO: Actually formalize coordinate system
-    // and corresponding transformations
-    float sq = -last_seen_q + 3.1415926f / 2.0f;
+    float sq = -last_seen_q;
     float c = cos(sq);
     float s = sin(sq);
     float s2 = sin(2*sq);
@@ -206,7 +204,7 @@ int main(int argc, char **argv)
         sim_State state = {};
         sim_recv_state(&state);
 
-        tile_to_float(state.drone_tile_x,
+        tile_to_world(state.drone_tile_x,
                       state.drone_tile_y,
                       &ai.drone_x,
                       &ai.drone_y);
