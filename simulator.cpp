@@ -146,6 +146,17 @@ draw_line(float x1, float y1, float x2, float y2)
 }
 
 void
+fill_square(float x1, float y1, float x2, float y2)
+{
+    glVertex2f(x1 / _line_scale_x, y1 / _line_scale_y);
+    glVertex2f(x2 / _line_scale_x, y1 / _line_scale_y);
+    glVertex2f(x2 / _line_scale_x, y2 / _line_scale_y);
+    glVertex2f(x2 / _line_scale_x, y2 / _line_scale_y);
+    glVertex2f(x1 / _line_scale_x, y2 / _line_scale_y);
+    glVertex2f(x1 / _line_scale_x, y1 / _line_scale_y);
+}
+
+void
 fill_circle(float x, float y, float r)
 {
     u32 n = 32;
@@ -513,11 +524,11 @@ compute_camera_view_radius(float height_above_ground)
 {
     // Interpolates between 0.5 meters and
     // 3 meters view radius when height goes
-    // from 0 to 3 meters.
+    // from 0 to 2.5 meters.
     float h0 = 0.0f;
     float h1 = 3.0f;
     float alpha = (drone.z - h0) / (h1 - h0);
-    float view_radius = 0.5f + 2.5f * alpha;
+    float view_radius = 0.5f + 2.0f * alpha;
     return view_radius;
 }
 
@@ -614,12 +625,16 @@ sim_init(VideoMode mode)
     drone.bias_y = 0.0f;
 }
 
+#define DEBUG_DISABLE_CMD
+
 void
 sim_tick(VideoMode mode, float t, float dt)
 {
     float aspect = mode.width/(float)mode.height;
     float line_scale_x = aspect*12.0f;
     float line_scale_y = 12.0f;
+
+    persist debug_UserData userdata;
 
     // Poll for commands sent to the drone
     sim_Command cmd = {};
@@ -628,8 +643,12 @@ sim_tick(VideoMode mode, float t, float dt)
         // For now we react to the command in an ad-hoc
         // manner. Later we will want to formalize the
         // drone response to various commands
+        #ifdef DEBUG_DISABLE_CMD
+        #else
         drone.cmd = cmd;
         drone.cmd_complete = 0;
+        #endif
+        userdata = cmd.userdata;
     }
 
     const u08 *keys = SDL_GetKeyboardState(0);
@@ -740,8 +759,8 @@ sim_tick(VideoMode mode, float t, float dt)
         sim_State state = {};
         state.elapsed_sim_time = t;
 
-        state.drone_tile_x = int(drone.x + drone.bias_x);
-        state.drone_tile_y = int(drone.y + drone.bias_y);
+        state.drone_tile_x = int(10.0f + drone.x + drone.bias_x);
+        state.drone_tile_y = int(10.0f + drone.y + drone.bias_y);
         state.drone_cmd_complete = drone.cmd_complete;
 
         for (u32 i = 0; i < Num_Targets; i++)
@@ -820,13 +839,32 @@ sim_tick(VideoMode mode, float t, float dt)
 
     glBegin(GL_TRIANGLES);
     {
+        // draw user data (probability field strength)
+        for (u32 xi = 0; xi < 20; xi++)
+        {
+            for (u32 yi = 0; yi < 20; yi++)
+            {
+                float x1 = -10.0f + 20.0f * (xi / 20.0f);
+                float y1 = -10.0f + 20.0f * (yi / 20.0f);
+                float x2 = -10.0f + 20.0f * ((xi + 1) / 20.0f);
+                float y2 = -10.0f + 20.0f * ((yi + 1) / 20.0f);
+                float s = (float)userdata.strength[yi][xi] / 255.0f;
+                float r = 0.5f + 0.5f*sin(6.2832f*(0.5f*s+0.8f));
+                float g = 0.5f + 0.5f*sin(6.2832f*(0.5f*s+0.9f));
+                float b = 0.3f + 0.5f*sin(6.2832f*(0.25f*s+0.3f));
+                float a = 1.0f;
+                glColor4f(r, g, b, a);
+                fill_square(x1, y1, x2, y2);
+            }
+        }
+
         // draw visible region
         glColor4f(0.34f, 0.4f, 0.49f, 0.15f);
         fill_circle(drone.x, drone.y,
                     compute_camera_view_radius(drone.z));
 
+        // draw biased drone position
         glColor4f(0.34f, 0.4f, 0.49f, 0.35f);
-        // glColor4f(0.95f, 0.3f, 0.2f, 0.15f);
         float tile_x = (float)((int)(drone.x + drone.bias_x) + 0.5f);
         float tile_y = (float)((int)(drone.y + drone.bias_y) + 0.5f);
         fill_circle(tile_x, tile_y, 0.5f);
@@ -836,7 +874,7 @@ sim_tick(VideoMode mode, float t, float dt)
     glBegin(GL_LINES);
     {
         // draw grid
-        set_color(0.34f, 0.4f, 0.49f, 0.45f);
+        set_color(0.0f, 0.0f, 0.0f, 0.45f);
         for (u32 i = 0; i <= 20; i++)
         {
             float x = (-1.0f + 2.0f * i / 20.0f) * 10.0f;

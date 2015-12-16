@@ -35,7 +35,7 @@
 
 // For example usage, see example_ai.cpp.
 
-#define Num_Targets 10
+#define Num_Targets 2
 #define Num_Obstacles 4
 
 // The simulation state is currently just fully
@@ -50,13 +50,32 @@ struct sim_State
     // x=+10      x=+10
     // y=+10      y=-10
     //   +----------+
-    //   |  GREEN   | ^
-    //   |          | |
-    //   |          | | Positive x-axis
-    //   |   RED    | |
+    //   |  GREEN   |
+    //   |          |
+    //   |          |
+    //   |   RED    |
     //   +----------+
     // x=-10      x=-10
     // y=+10      y=-10
+    //
+    //              ^
+    //              |
+    //              | Positive x-axis
+    //              |
+    //     <--------+
+    //  Positive y-axis
+
+    // In tiles
+    // x=19       x=19
+    // y=19       y=0
+    //   +----------+
+    //   |  GREEN   |
+    //   |          |
+    //   |          |
+    //   |   RED    |
+    //   +----------+
+    // x=0         x=0
+    // y=19        y=0
 
     // Only targets in view get their fields updated.
     bool  target_in_view[Num_Targets];   // True if target currently in view
@@ -65,7 +84,7 @@ struct sim_State
     float obstacle_rel_x[Num_Obstacles]; // x coordinate relative drone
     float obstacle_rel_y[Num_Obstacles]; // y coordinate relative drone
     int   drone_tile_x;                  // x position in tiles
-                                         // (i.e. integers from -10 to 10)
+                                         // (i.e. integers from 0 to 19)
     int   drone_tile_y;                  // y position in tiles
 
     // This is set to true once the drone has successfully
@@ -88,12 +107,20 @@ enum sim_CommandType
     sim_CommandType_Search           // ascend to 3 meters and go to (x, y)
 };
 
+struct debug_UserData
+{
+    // Visualize probability field
+    unsigned char strength[20][20];
+};
+
 struct sim_Command
 {
     sim_CommandType type;
     float x;
     float y;
     int i;
+
+    debug_UserData userdata;
 };
 
 #define UDP_IMPLEMENTATION

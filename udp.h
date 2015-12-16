@@ -60,6 +60,7 @@ bool udp_read_all(char *result, char *buffer,
 #include <sys/socket.h>
 
 static int udp_socket = 0;
+static int udp_is_blocking = 0;
 
 bool udp_open(uint16_t listen_port, bool non_blocking)
 {
@@ -85,6 +86,7 @@ bool udp_open(uint16_t listen_port, bool non_blocking)
 
     if (non_blocking)
     {
+        udp_is_blocking = 0;
         int opt = 1;
         if (ioctl(udp_socket, FIONBIO, &opt) == -1)
         {
@@ -92,6 +94,10 @@ bool udp_open(uint16_t listen_port, bool non_blocking)
             UDP_ASSERT(false);
             return false;
         }
+    }
+    else
+    {
+        udp_is_blocking = 1;
     }
 
     return true;
@@ -158,6 +164,7 @@ void udp_close()
 #include <winsock2.h>
 #pragma comment(lib, "wsock32.lib")
 static uint32_t udp_socket = 0;
+static int udp_is_blocking = 0;
 
 bool udp_open(uint16_t listen_port, bool non_blocking)
 {
@@ -192,6 +199,7 @@ bool udp_open(uint16_t listen_port, bool non_blocking)
     if (non_blocking)
     {
         // Set port to not block when calling recvfrom
+        udp_is_blocking = 0;
         DWORD non_blocking = 1;
         if (ioctlsocket(udp_socket, FIONBIO, &non_blocking) != 0)
         {
@@ -199,6 +207,10 @@ bool udp_open(uint16_t listen_port, bool non_blocking)
             UDP_ASSERT(false);
             return false;
         }
+    }
+    else
+    {
+        udp_is_blocking = 1;
     }
 
     return true;
@@ -264,6 +276,25 @@ bool udp_read_all(char *result,
                   uint32_t size,
                   udp_addr *src)
 {
+    if (udp_is_blocking)
+    {
+        // I haven't implemented read_all correctly
+        // for blocking sockets. Ideally, we would
+        // try to read until we get blocket, at which
+        // point we return the latest data. For now,
+        // I just read once.
+        uint32_t read_bytes = udp_recv(buffer, size, src);
+        if (read_bytes != size)
+        {
+            return false;
+        }
+        else
+        {
+            memcpy(result, buffer, size);
+            return true;
+        }
+    }
+
     uint32_t read_bytes = udp_recv(buffer, size, src);
     if (read_bytes != size)
     {
