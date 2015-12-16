@@ -35,7 +35,7 @@
 
 // For example usage, see example_ai.cpp.
 
-#define Num_Targets 2
+#define Num_Targets 10
 #define Num_Obstacles 4
 
 // The simulation state is currently just fully

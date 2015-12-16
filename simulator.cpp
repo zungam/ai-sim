@@ -10,6 +10,8 @@
 // visualize the dynamics better by speeding
 // it up.
 #define SPEED_MULTIPLIER 1
+#define DEBUG_IGNORE_BIAS
+#define DEBUG_DISABLE_CMD
 
 #ifndef PI
 #define PI 3.14159265359f
@@ -625,8 +627,6 @@ sim_init(VideoMode mode)
     drone.bias_y = 0.0f;
 }
 
-#define DEBUG_DISABLE_CMD
-
 void
 sim_tick(VideoMode mode, float t, float dt)
 {
@@ -643,8 +643,7 @@ sim_tick(VideoMode mode, float t, float dt)
         // For now we react to the command in an ad-hoc
         // manner. Later we will want to formalize the
         // drone response to various commands
-        #ifdef DEBUG_DISABLE_CMD
-        #else
+        #ifndef DEBUG_DISABLE_CMD
         drone.cmd = cmd;
         drone.cmd_complete = 0;
         #endif
@@ -716,6 +715,7 @@ sim_tick(VideoMode mode, float t, float dt)
     // probability of a bias being added to the
     // estimated drone position, in either coordinate,
     // of one grid cell in meters.
+    #ifndef DEBUG_IGNORE_BIAS
     persist r32 drone_bias_timer = 2.0f;
     r32 drone_bias_probability = 0.5f;
     drone_bias_timer -= dt;
@@ -738,6 +738,7 @@ sim_tick(VideoMode mode, float t, float dt)
         }
         drone_bias_timer = 2.0f;
     }
+    #endif
 
     // Bias is eliminated in atleast one coordinate
     // if the drone detects an edge of the map.
@@ -849,9 +850,9 @@ sim_tick(VideoMode mode, float t, float dt)
                 float x2 = -10.0f + 20.0f * ((xi + 1) / 20.0f);
                 float y2 = -10.0f + 20.0f * ((yi + 1) / 20.0f);
                 float s = (float)userdata.strength[yi][xi] / 255.0f;
-                float r = 0.5f + 0.5f*sin(6.2832f*(0.5f*s+0.8f));
+                float r = 0.5f + 0.5f*sin(6.2832f*(0.3f*s+0.8f));
                 float g = 0.5f + 0.5f*sin(6.2832f*(0.5f*s+0.9f));
-                float b = 0.3f + 0.5f*sin(6.2832f*(0.25f*s+0.3f));
+                float b = 0.5f + 0.5f*sin(6.2832f*(0.25f*s+0.3f));
                 float a = 1.0f;
                 glColor4f(r, g, b, a);
                 fill_square(x1, y1, x2, y2);
@@ -865,9 +866,9 @@ sim_tick(VideoMode mode, float t, float dt)
 
         // draw biased drone position
         glColor4f(0.34f, 0.4f, 0.49f, 0.35f);
-        float tile_x = (float)((int)(drone.x + drone.bias_x) + 0.5f);
-        float tile_y = (float)((int)(drone.y + drone.bias_y) + 0.5f);
-        fill_circle(tile_x, tile_y, 0.5f);
+        float tile_x = (float)((int)(10.0f + drone.x + drone.bias_x) + 0.5f);
+        float tile_y = (float)((int)(10.0f + drone.y + drone.bias_y) + 0.5f);
+        fill_circle(-10.0f+tile_x, -10.0f+tile_y, 0.5f);
     }
     glEnd();
 
@@ -897,21 +898,14 @@ sim_tick(VideoMode mode, float t, float dt)
             draw_robot(&obstacles[i]);
 
         // draw drone
-        set_color(0.33f, 0.55f, 0.53f, 1.0f);
+        set_color(0.0f, 0.0f, 0.0f, 1.0f);
         draw_line(drone.x - 0.5f, drone.y,
                   drone.x + 0.5f, drone.y);
         draw_line(drone.x, drone.y - 0.5f,
                   drone.x, drone.y + 0.5f);
 
-        // draw measured drone position
-        // set_color(0.33f, 0.55f, 0.53f, 0.5f);
-        // draw_line(drone.x + drone.bias_x - 0.5f, drone.y + drone.bias_y,
-        //           drone.x + drone.bias_x + 0.5f, drone.y + drone.bias_y);
-        // draw_line(drone.x + drone.bias_x, drone.y + drone.bias_y - 0.5f,
-        //           drone.x + drone.bias_x, drone.y + drone.bias_y + 0.5f);
-
         // draw drone goto
-        set_color(0.2f, 0.5f, 1.0f, 0.5f);
+        set_color(0.0f, 0.0f, 0.0f, 0.5f);
         draw_circle(drone.xr, drone.yr, 0.45f);
 
         // draw indicators of magnet or bumper activations

@@ -120,7 +120,7 @@ float p_or(float *p, int count)
 void belief_strengthen(Belief *a, Belief *b,
                        Belief *result)
 {
-    float k_forget = 0.4f;
+    float k_forget = 0.1f;
     for_each_tile(i)
     {
         float sa = a->strength[i];
@@ -143,14 +143,17 @@ void tile_to_float(int x, int y,
 }
 
 void hidden_belief_update(Belief *a,
-                          float time,
+                          float elapsed_time,
                           float time_since_last_seen,
                           float last_seen_x,
                           float last_seen_y,
                           float last_seen_q)
 {
-    float sx = 8.0f;
-    float sy = 1.4f;
+    float forget_rate = 0.02f;
+    float forget_to_p = 0.2f;
+    float e = exp(-forget_rate*(elapsed_time - time_since_last_seen));
+    float sx = 8.0f * e + 16.0f * (1.0f - e);
+    float sy = 1.4f * e + 2.8f * (1.0f - e);
     // TODO: Actually formalize coordinate system
     // and corresponding transformations
     float sq = -last_seen_q + 3.1415926f / 2.0f;
@@ -161,15 +164,15 @@ void hidden_belief_update(Belief *a,
     float a12 = 0.25f * (-s2/sx + s2/sy);
     float a22 = 0.5f * (s*s/sx + c*c/sy);
 
-    belief_clear(a, 0.0025f);
     for (int y = 0; y < Tile_Dim; y++)
     {
         for (int x = 0; x < Tile_Dim; x++)
         {
             float x1 = tile_to_float(x) - last_seen_x;
             float x2 = tile_to_float(y) - last_seen_y;
-            float f = exp(-(a11*x1*x1 + 2.0f*a12*x1*x2 + a22*x2*x2));
-            belief_set(a, x, y, f);
+            float p0 = exp(-(a11*x1*x1 + 2.0f*a12*x1*x2 + a22*x2*x2));
+            float p = p0 * e + 0.0025f;
+            belief_set(a, x, y, p);
         }
     }
 }
@@ -189,7 +192,7 @@ int main(int argc, char **argv)
         ai.targets[i].visible = false;
         ai.targets[i].vision_index = 0;
 
-        ai.targets[i].last_seen_time = 0.0f;
+        ai.targets[i].last_seen_time = -1.0f;
         ai.targets[i].last_seen_x = 0.0f;
         ai.targets[i].last_seen_y = 0.0f;
         ai.targets[i].last_seen_q = 0.0f;
@@ -262,9 +265,8 @@ int main(int argc, char **argv)
 
         for_each_target(i)
         {
-            if (!ai.targets[i].visible)
+            if (!ai.targets[i].visible && ai.targets[i].last_seen_time >= 0.0f)
             {
-                printf("update %d\n", i);
                 hidden_belief_update(&ai.targets[i].belief,
                                      ai.time,
                                      ai.targets[i].last_seen_time,
