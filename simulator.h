@@ -73,6 +73,8 @@ struct sim_State
     // Only targets in view get their fields updated.
     bool  target_in_view[Num_Targets];   // True if target currently in view
     bool  target_reversing[Num_Targets]; // True if target currently reversing
+    float target_rel_x[Num_Targets];     // x position relative drone
+    float target_rel_y[Num_Targets];     // y position relative drone
     float target_q[Num_Targets];         // Angle relative x-axis
     float obstacle_rel_x[Num_Obstacles]; // x position relative drone
     float obstacle_rel_y[Num_Obstacles]; // y position relative drone

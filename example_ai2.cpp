@@ -29,7 +29,11 @@ struct Target
     float last_seen_x;
     float last_seen_y;
     float last_seen_q;
-    float time_until_reverse; // Estimated
+    float time_until_reverse;
+
+    float estimated_x;
+    float estimated_y;
+    float estimated_q;
 
     Belief belief;
 };
@@ -117,59 +121,54 @@ float p_or(float *p, int count)
     return a_or_b;
 }
 
-void belief_strengthen(Belief *a, Belief *b,
-                       Belief *result)
+// Modifies a to include b.
+void belief_strengthen(Belief *a, Belief *b, float forget)
 {
-    float k_forget = 0.1f;
     for_each_tile(i)
     {
         float sa = a->strength[i];
         float sb = b->strength[i];
-        float sr = k_forget * sa + (1.0f - k_forget) * sb;
-        result->strength[i] = sr;
+        float sr = (1.0f - forget) * sa + forget * sb;
+        a->strength[i] = sr;
     }
 }
 
-float tile_to_float(int x)
+void belief_weaken(Belief *a, Belief *b, float forget)
 {
-    return (float)x + 0.5f;
+    for_each_tile(i)
+    {
+        float sa = a->strength[i];
+        float sb = b->strength[i];
+        float sr = (1.0f - forget) * sa - forget * sb;
+        if (sr < 0.0f)
+            sr = 0.0f;
+        a->strength[i] = sr;
+    }
 }
 
-void tile_to_float(int x, int y,
-                   float *out_x, float *out_y)
+void belief_apply_gaussian(Belief *a,
+                           float sigma_x,
+                           float sigma_y,
+                           float theta,
+                           float center_x,
+                           float center_y)
 {
-    *out_x = tile_to_float(x);
-    *out_y = tile_to_float(y);
-}
-
-void hidden_belief_update(Belief *a,
-                          float elapsed_time,
-                          float time_since_last_seen,
-                          float last_seen_x,
-                          float last_seen_y,
-                          float last_seen_q)
-{
-    float forget_rate = 0.02f;
-    float forget_to_p = 0.2f;
-    float e = exp(-forget_rate*(elapsed_time - time_since_last_seen));
-    float sx = 8.0f * e + 16.0f * (1.0f - e);
-    float sy = 1.4f * e + 2.8f * (1.0f - e);
-    float sq = -last_seen_q;
-    float c = cos(sq);
-    float s = sin(sq);
-    float s2 = sin(2*sq);
-    float a11 = 0.5f * (c*c/sx + s*s/sy);
-    float a12 = 0.25f * (-s2/sx + s2/sy);
-    float a22 = 0.5f * (s*s/sx + c*c/sy);
+    float c = cos(-theta);
+    float s = sin(-theta);
+    float s2 = sin(-2.0f*theta);
+    float a11 = 0.5f * (c*c/sigma_x + s*s/sigma_y);
+    float a12 = 0.25f * (-s2/sigma_x + s2/sigma_y);
+    float a22 = 0.5f * (s*s/sigma_x + c*c/sigma_y);
 
     for (int y = 0; y < Tile_Dim; y++)
     {
         for (int x = 0; x < Tile_Dim; x++)
         {
-            float x1 = tile_to_float(x) - last_seen_x;
-            float x2 = tile_to_float(y) - last_seen_y;
-            float p0 = exp(-(a11*x1*x1 + 2.0f*a12*x1*x2 + a22*x2*x2));
-            float p = p0 * e + 0.0025f;
+            float x1, x2;
+            tile_to_world(x, y, &x1, &x2);
+            x1 = x1 - center_x;
+            x2 = x2 - center_y;
+            float p = exp(-(a11*x1*x1 + 2.0f*a12*x1*x2 + a22*x2*x2));
             belief_set(a, x, y, p);
         }
     }
@@ -186,7 +185,12 @@ int main(int argc, char **argv)
 
     for_each_target(i)
     {
+        float q = 2.0f * 3.1415926f * i / (float)(Num_Targets);
         belief_clear(&ai.targets[i].belief, 0.0025f);
+        belief_apply_gaussian(&ai.targets[i].belief,
+                              14.0f, 1.4f, q,
+                              10.0f + cos(q) * 3.3f,
+                              10.0f + sin(q) * 3.3f);
         ai.targets[i].visible = false;
         ai.targets[i].vision_index = 0;
 
@@ -225,8 +229,16 @@ int main(int argc, char **argv)
             if (!state.target_in_view[i])
                 continue;
             Belief belief;
-            int x = state.drone_tile_x;
-            int y = state.drone_tile_y;
+            float drone_x, drone_y;
+            tile_to_world(state.drone_tile_x,
+                          state.drone_tile_y,
+                          &drone_x, &drone_y);
+            float rel_x = state.target_rel_x[i];
+            float rel_y = state.target_rel_y[i];
+            float world_x = drone_x + rel_x;
+            float world_y = drone_y + rel_y;
+            int x, y;
+            world_to_tile(world_x, world_y, &x, &y);
 
             // Since there may be bias in the drone position
             // estimate, the belief will be like a gauss kernel
@@ -243,34 +255,58 @@ int main(int argc, char **argv)
             belief_set(&belief, x-1, y+1, 0.12f);
 
             int match = find_most_likely_match(ai.targets, &belief);
-            belief_strengthen(&ai.targets[match].belief, &belief,
-                              &ai.targets[match].belief);
+            belief_strengthen(&ai.targets[match].belief, &belief, 0.3f);
             ai.targets[match].identified = true;
             ai.targets[match].visible = true;
             ai.targets[match].vision_index = i;
             ai.targets[match].last_seen_time = ai.time;
-            ai.targets[match].last_seen_x = tile_to_float(x);
-            ai.targets[match].last_seen_y = tile_to_float(y);
+            ai.targets[match].last_seen_x = world_x;
+            ai.targets[match].last_seen_y = world_y;
             ai.targets[match].last_seen_q = state.target_q[i];
+            ai.targets[match].estimated_x = world_x;
+            ai.targets[match].estimated_y = world_y;
+            ai.targets[match].estimated_q = state.target_q[i];
 
-            if (state.target_reversing[i])
-                ai.targets[match].time_until_reverse = 20.0f;
-            ai.targets[match].time_until_reverse -= delta_time;
+            // TODO: Reverse state is active whether it is
+            // a timed reverse or because it collided. Figure
+            // out how to cope with this. Until then, assume
+            // global timing.
+            // if (state.target_reversing[i])
+            //     ai.targets[match].time_until_reverse = 20.0f;
 
-            printf("saw %d, looks like %d, %.2f\n", i, match,
-                   ai.targets[match].last_seen_q);
+            printf("saw %d. might reverse in %.2f sec\n", i,
+                   ai.targets[match].time_until_reverse);
         }
 
         for_each_target(i)
         {
+            ai.targets[i].time_until_reverse -= delta_time;
+            if (ai.targets[i].time_until_reverse <= 0.0f)
+            {
+                ai.targets[i].time_until_reverse = 20.0f;
+                ai.targets[i].estimated_q += 3.1415926f;
+            }
+
             if (!ai.targets[i].visible && ai.targets[i].last_seen_time >= 0.0f)
             {
-                hidden_belief_update(&ai.targets[i].belief,
-                                     ai.time,
-                                     ai.targets[i].last_seen_time,
-                                     ai.targets[i].last_seen_x,
-                                     ai.targets[i].last_seen_y,
-                                     ai.targets[i].last_seen_q);
+                float x = ai.targets[i].estimated_x;
+                float y = ai.targets[i].estimated_y;
+                float q = ai.targets[i].estimated_q;
+                Belief belief;
+                belief_clear(&belief, 0.0025f);
+                float alpha = ai.time - ai.targets[i].last_seen_time;
+                float e = exp(-0.0025f * alpha);
+                float sigma_x = 6.0f*e + 12.0f*(1.0f-e);
+                float sigma_y = 2.5f*e + 15.0f*(1.0f-e);
+                belief_apply_gaussian(&belief, sigma_x, sigma_y, q, x, y);
+                belief_strengthen(&ai.targets[i].belief, &belief, 0.34f);
+
+                belief_clear(&belief, 0.0f);
+                belief_apply_gaussian(&belief, 4.0f, 4.0f, 0.0f,
+                                      ai.drone_x, ai.drone_y);
+                belief_weaken(&ai.targets[i].belief, &belief, 0.15f);
+                ai.targets[i].estimated_x += 0.33f * cos(q) * delta_time;
+                ai.targets[i].estimated_y += 0.33f * sin(q) * delta_time;
             }
         }
 

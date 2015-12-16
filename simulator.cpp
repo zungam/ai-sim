@@ -780,21 +780,21 @@ sim_tick(VideoMode mode, float t, float dt)
 
         for (u32 i = 0; i < Num_Targets; i++)
         {
-            // I'll assume that we have pretty much given up on
-            // tracking robots that are further away than a given
-            // radius
+            // I'll assume that we can compute the relative distance
+            // between us and a ground robot that is close enough in
+            // our view.
             float observation_radius = compute_camera_view_radius(drone.z);
             float dist = vector_length(targets[i].x - drone.x,
                                        targets[i].y - drone.y);
             if (dist < observation_radius)
             {
-                float x, y, q, vx, vy;
-                robot_observe_state(&targets[i], &x, &y, &vx, &vy, &q);
+                state.target_rel_x[i] = targets[i].x - drone.x;
+                state.target_rel_y[i] = targets[i].y - drone.y;
                 if (targets[i].state == Robot_Reverse)
                     state.target_reversing[i] = true;
                 else
                     state.target_reversing[i] = false;
-                state.target_q[i] = q;
+                state.target_q[i] = targets[i].q;
                 state.target_in_view[i] = true;
             }
             else
@@ -808,10 +808,8 @@ sim_tick(VideoMode mode, float t, float dt)
             // I'll assume that we have a laser mounted on top
             // of the quad which actually observes the position
             // of the tower robots reasonably.
-            float x, y, q, vx, vy;
-            robot_observe_state(&obstacles[i], &x, &y, &vx, &vy, &q);
-            state.obstacle_rel_x[i] = x - drone.x;
-            state.obstacle_rel_y[i] = y - drone.y;
+            state.obstacle_rel_x[i] = obstacles[i].x - drone.x;
+            state.obstacle_rel_y[i] = obstacles[i].y - drone.y;
         }
 
         sim_send_state(&state);
@@ -879,7 +877,15 @@ sim_tick(VideoMode mode, float t, float dt)
         // draw targets
         set_color(0.75f, 0.2f, 0.26f, 1.0f);
         for (u32 i = 0; i < Num_Targets; i++)
-            draw_robot(&targets[i]);
+        {
+            float observation_radius = compute_camera_view_radius(drone.z);
+            float dist = vector_length(targets[i].x - drone.x,
+                                       targets[i].y - drone.y);
+            if (dist < observation_radius)
+            {
+                draw_robot(&targets[i]);
+            }
+        }
 
         // draw obstacles
         set_color(0.71f, 0.7f, 0.07f, 1.0f);
