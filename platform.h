@@ -30,4 +30,14 @@ struct VideoMode
     // instead of waiting for the next retrace.
     int swap_interval;
 };
+
+// The random numbers are seeded on startup.
+// They are not uniform or otherwise good quality
+// random numbers.
+
+// return: Pseudo-random real number in the range [0, 1]
+float frand();
+
+// return: Pseudo-random integer in the range [0, 64]
+int random_0_64();
 #endif
