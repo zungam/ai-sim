@@ -26,29 +26,6 @@ global Color _line_color;
 global float _ndc_scale_x;
 global float _ndc_scale_y;
 
-// return: A random number with a period of (2^128) - 1
-// more:   http://en.wikipedia.org/wiki/Xorshift
-unsigned int
-xor128()
-{
-    static unsigned int x = 123456789;
-    static unsigned int y = 362436069;
-    static unsigned int z = 521288629;
-    static unsigned int w = 88675123;
-    unsigned int t;
-
-    t = x ^ (x << 11);
-    x = y; y = z; z = w;
-    return w = w ^ (w >> 19) ^ (t ^ (t >>8));
-}
-
-// return: A uniformly distributed value in [0.0f, 1.0f]
-float
-frand()
-{
-    return xor128() / float(4294967295.0f);
-}
-
 void
 world_to_ndc(float x_world, float y_world,
              float *x_ndc, float *y_ndc)
@@ -491,6 +468,7 @@ advance_state(float dt)
             robots[i].y > 20.0f)
         {
             robots[i].removed = true;
+            robots[i].y = 300.0f; // move far away
         }
         if (collision[i].hits > 0)
         {
