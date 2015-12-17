@@ -16,6 +16,7 @@ struct Target
 {
     bool visible;
     bool identified;
+    float removed;
 
     // The index into the original array of currently
     // visible robots that we received from the vision
@@ -191,6 +192,8 @@ int main(int argc, char **argv)
                               14.0f, 1.4f, q,
                               10.0f + cos(q) * 3.3f,
                               10.0f + sin(q) * 3.3f);
+        ai.targets[i].removed = 0.0f;
+        ai.targets[i].identified = false;
         ai.targets[i].visible = false;
         ai.targets[i].vision_index = 0;
 
@@ -266,6 +269,12 @@ int main(int argc, char **argv)
             ai.targets[match].estimated_x = world_x;
             ai.targets[match].estimated_y = world_y;
             ai.targets[match].estimated_q = state.target_q[i];
+            ai.targets[match].removed = 0.0f;
+            if (world_y > 17.0f)
+            {
+                printf("removing %d\n", match);
+                ai.targets[match].removed = 1.0f;
+            }
 
             // TODO: Reverse state is active whether it is
             // a timed reverse or because it collided. Figure
@@ -274,7 +283,8 @@ int main(int argc, char **argv)
             // if (state.target_reversing[i])
             //     ai.targets[match].time_until_reverse = 20.0f;
 
-            printf("saw %d. might reverse in %.2f sec\n", i,
+            printf("saw %d (%.2f %.2f); %.2f sec\n", i,
+                   world_x, world_y,
                    ai.targets[match].time_until_reverse);
         }
 
@@ -287,26 +297,30 @@ int main(int argc, char **argv)
                 ai.targets[i].estimated_q += 3.1415926f;
             }
 
-            if (!ai.targets[i].visible && ai.targets[i].last_seen_time >= 0.0f)
+            if (!ai.targets[i].visible &&
+                 ai.targets[i].last_seen_time >= 0.0f)
             {
-                float x = ai.targets[i].estimated_x;
-                float y = ai.targets[i].estimated_y;
-                float q = ai.targets[i].estimated_q;
                 Belief belief;
-                belief_clear(&belief, 0.0025f);
-                float alpha = ai.time - ai.targets[i].last_seen_time;
-                float e = exp(-0.0025f * alpha);
-                float sigma_x = 6.0f*e + 12.0f*(1.0f-e);
-                float sigma_y = 2.5f*e + 15.0f*(1.0f-e);
-                belief_apply_gaussian(&belief, sigma_x, sigma_y, q, x, y);
-                belief_strengthen(&ai.targets[i].belief, &belief, 0.34f);
+                if (!ai.targets[i].removed)
+                {
+                    float x = ai.targets[i].estimated_x;
+                    float y = ai.targets[i].estimated_y;
+                    float q = ai.targets[i].estimated_q;
+                    belief_clear(&belief, 0.0025f);
+                    float alpha = ai.time - ai.targets[i].last_seen_time;
+                    float e = exp(-0.0025f * alpha);
+                    float sigma_x = 6.0f*e + 12.0f*(1.0f-e);
+                    float sigma_y = 2.5f*e + 15.0f*(1.0f-e);
+                    belief_apply_gaussian(&belief, sigma_x, sigma_y, q, x, y);
+                    belief_strengthen(&ai.targets[i].belief, &belief, 0.34f);
+                    ai.targets[i].estimated_x += 0.33f * cos(q) * delta_time;
+                    ai.targets[i].estimated_y += 0.33f * sin(q) * delta_time;
+                }
 
                 belief_clear(&belief, 0.0f);
                 belief_apply_gaussian(&belief, 4.0f, 4.0f, 0.0f,
                                       ai.drone_x, ai.drone_y);
                 belief_weaken(&ai.targets[i].belief, &belief, 0.15f);
-                ai.targets[i].estimated_x += 0.33f * cos(q) * delta_time;
-                ai.targets[i].estimated_y += 0.33f * sin(q) * delta_time;
             }
         }
 
