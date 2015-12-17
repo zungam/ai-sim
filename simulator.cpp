@@ -114,8 +114,7 @@ static sim_Drone drone;
 void
 set_color(float r, float g, float b, float a)
 {
-    Color color = { r, g, b, a };
-    _line_color = color;
+    glColor4f(r, g, b, a);
 }
 
 void
@@ -124,9 +123,7 @@ draw_line(float x1, float y1, float x2, float y2)
     float x1n, y1n, x2n, y2n;
     world_to_ndc(x1, y1, &x1n, &y1n);
     world_to_ndc(x2, y2, &x2n, &y2n);
-    glColor4f(_line_color.r, _line_color.g, _line_color.b, _line_color.a);
     glVertex2f(x1n, y1n);
-    glColor4f(_line_color.r, _line_color.g, _line_color.b, _line_color.a);
     glVertex2f(x2n, y2n);
 }
 
@@ -488,14 +485,12 @@ void
 draw_robot(sim_Robot *r)
 {
     if (r->removed) return;
-    draw_circle(r->x, r->y, r->L * 0.5f);
-    draw_line(r->x - r->tangent_x * r->L * 0.5f,
-              r->y - r->tangent_y * r->L * 0.5f,
-              r->x + r->tangent_x * r->L * 0.5f,
-              r->y + r->tangent_y * r->L * 0.5f);
-    draw_line(r->x, r->y,
-              r->x + r->forward_x * r->L * 1.3f,
-              r->y + r->forward_y * r->L * 1.3f);
+    float x = r->x;
+    float y = r->y;
+    float l = r->L;
+    float q = r->q;
+    draw_circle(x, y, l*0.5f);
+    draw_line(x, y, x + l*cos(q), y + l*sin(q));
 }
 
 void
@@ -794,7 +789,7 @@ sim_tick(VideoMode mode, float t, float dt)
     }
 
     glViewport(0, 0, mode.width, mode.height);
-    glClearColor(0.05f, 0.03f, 0.01f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     glLineWidth(2.0f);
     glEnable(GL_BLEND);
@@ -811,36 +806,43 @@ sim_tick(VideoMode mode, float t, float dt)
                 tile_to_world(xi, yi, &x1, &y1);
                 tile_to_world(xi+1, yi+1, &x2, &y2);
                 float s = (float)userdata.strength[yi][xi] / 255.0f;
-                float r = 0.5f + 0.5f*sin(6.2832f*(0.3f*s+0.8f));
-                float g = 0.5f + 0.5f*sin(6.2832f*(0.5f*s+0.9f));
-                float b = 0.5f + 0.5f*sin(6.2832f*(0.25f*s+0.3f));
+
+                // Colorful color palette
+                // float r = 0.5f + 0.5f*sin(6.2832f*(0.3f*s+0.8f));
+                // float g = 0.5f + 0.5f*sin(6.2832f*(0.5f*s+0.9f));
+                // float b = 0.5f + 0.5f*sin(6.2832f*(0.25f*s+0.3f));
+
+                float r = s * 0.27f;
+                float g = s * 0.14f;
+                float b = s * 0.20f;
+                if (s > 0.5f)
+                {
+                    r = s * 0.62f;
+                    g = s * 0.22f;
+                    b = s * 0.18f;
+                }
                 float a = 1.0f;
                 glColor4f(r, g, b, a);
                 fill_square(x1, y1, x2, y2);
             }
         }
 
-        // draw visible region
-        glColor4f(0.34f, 0.4f, 0.49f, 0.15f);
-        fill_circle(drone.x, drone.y,
-                    compute_camera_view_radius(drone.z));
-
         // draw biased drone position
-        glColor4f(0.34f, 0.4f, 0.49f, 0.35f);
-        int tile_x, tile_y;
-        float draw_x, draw_y;
-        world_to_tile(drone.x + drone.bias_x,
-                      drone.y + drone.bias_y,
-                      &tile_x, &tile_y);
-        tile_to_world(tile_x, tile_y, &draw_x, &draw_y);
-        fill_circle(draw_x+0.5f, draw_y+0.5f, 0.5f);
+        // glColor4f(0.46, 0.44, 0.38, 0.35f);
+        // int tile_x, tile_y;
+        // float draw_x, draw_y;
+        // world_to_tile(drone.x + drone.bias_x,
+        //               drone.y + drone.bias_y,
+        //               &tile_x, &tile_y);
+        // tile_to_world(tile_x, tile_y, &draw_x, &draw_y);
+        // fill_circle(draw_x+0.5f, draw_y+0.5f, 0.5f);
     }
     glEnd();
 
     glBegin(GL_LINES);
     {
         // draw grid
-        set_color(0.0f, 0.0f, 0.0f, 0.45f);
+        set_color(0.87f, 0.93f, 0.84f, 0.2f);
         for (u32 i = 0; i <= 20; i++)
         {
             float x = (float)i;
@@ -848,37 +850,39 @@ sim_tick(VideoMode mode, float t, float dt)
             draw_line(0.0f, x, 20.0f, x);
         }
 
+        // draw visible region
+        set_color(0.87f, 0.93f, 0.84f, 0.5f);
+        draw_circle(drone.x, drone.y, compute_camera_view_radius(drone.z));
+
         // draw green line
-        set_color(0.1f, 1.0f, 0.3f, 0.45f);
+        set_color(0.43f, 0.67f, 0.17f, 1.0f);
         draw_line(0.0f, 20.0f, 20.0f, 20.0f);
 
         // draw targets
-        set_color(0.75f, 0.2f, 0.26f, 1.0f);
+        set_color(0.85, 0.83, 0.37, 1.0f);
         for (u32 i = 0; i < Num_Targets; i++)
         {
             float observation_radius = compute_camera_view_radius(drone.z);
             float dist = vector_length(targets[i].x - drone.x,
                                        targets[i].y - drone.y);
             if (dist < observation_radius)
-            {
                 draw_robot(&targets[i]);
-            }
         }
 
         // draw obstacles
-        set_color(0.71f, 0.7f, 0.07f, 1.0f);
+        set_color(0.43, 0.76, 0.79, 1.0f);
         for (u32 i = 0; i < Num_Obstacles; i++)
             draw_robot(&obstacles[i]);
 
         // draw drone
-        set_color(0.0f, 0.0f, 0.0f, 1.0f);
+        set_color(0.87f, 0.93f, 0.84f, 0.5f);
         draw_line(drone.x - 0.5f, drone.y,
                   drone.x + 0.5f, drone.y);
         draw_line(drone.x, drone.y - 0.5f,
                   drone.x, drone.y + 0.5f);
 
         // draw drone goto
-        set_color(0.0f, 0.0f, 0.0f, 0.5f);
+        set_color(0.87f, 0.93f, 0.84f, 0.5f);
         draw_circle(drone.xr, drone.yr, 0.45f);
 
         // draw indicators of magnet or bumper activations
