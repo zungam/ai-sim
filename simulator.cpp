@@ -10,8 +10,9 @@
 // visualize the dynamics better by speeding
 // it up.
 #define SPEED_MULTIPLIER 1
-#define DEBUG_IGNORE_BIAS
-#define DEBUG_DISABLE_CMD
+// #define ENABLE_BIAS
+// #define ENABLE_AI_CMD
+#define ENABLE_AI_USERDATA
 
 #ifndef PI
 #define PI 3.14159265359f
@@ -628,7 +629,7 @@ sim_tick(VideoMode mode, float t, float dt)
         // For now we react to the command in an ad-hoc
         // manner. Later we will want to formalize the
         // drone response to various commands
-        #ifndef DEBUG_DISABLE_CMD
+        #ifdef ENABLE_AI_CMD
         drone.cmd = cmd;
         drone.cmd_complete = 0;
         #endif
@@ -700,7 +701,7 @@ sim_tick(VideoMode mode, float t, float dt)
     // probability of a bias being added to the
     // estimated drone position, in either coordinate,
     // of one grid cell in meters.
-    #ifndef DEBUG_IGNORE_BIAS
+    #ifdef ENABLE_BIAS
     persist r32 drone_bias_timer = 2.0f;
     r32 drone_bias_probability = 0.5f;
     drone_bias_timer -= dt;
@@ -797,6 +798,7 @@ sim_tick(VideoMode mode, float t, float dt)
 
     glBegin(GL_TRIANGLES);
     {
+        #ifdef ENABLE_AI_USERDATA
         // draw user data (probability field strength)
         for (u32 xi = 0; xi < 20; xi++)
         {
@@ -826,6 +828,7 @@ sim_tick(VideoMode mode, float t, float dt)
                 fill_square(x1, y1, x2, y2);
             }
         }
+        #endif
 
         // draw biased drone position
         // glColor4f(0.46, 0.44, 0.38, 0.35f);
@@ -862,11 +865,11 @@ sim_tick(VideoMode mode, float t, float dt)
         set_color(0.85, 0.83, 0.37, 1.0f);
         for (u32 i = 0; i < Num_Targets; i++)
         {
-            float observation_radius = compute_camera_view_radius(drone.z);
-            float dist = vector_length(targets[i].x - drone.x,
-                                       targets[i].y - drone.y);
-            if (dist < observation_radius)
-                draw_robot(&targets[i]);
+            // float observation_radius = compute_camera_view_radius(drone.z);
+            // float dist = vector_length(targets[i].x - drone.x,
+            //                            targets[i].y - drone.y);
+            // if (dist < observation_radius)
+            draw_robot(&targets[i]);
         }
 
         // draw obstacles
