@@ -75,7 +75,7 @@ struct sim_State
     bool  target_reversing[Num_Targets]; // True if target currently reversing
     float target_rel_x[Num_Targets];     // x position relative drone
     float target_rel_y[Num_Targets];     // y position relative drone
-    float target_q[Num_Targets];         // Angle relative x-axis
+    float target_q[Num_Targets];         // Angle relative x-axis (+ ccw)
     float obstacle_rel_x[Num_Obstacles]; // x position relative drone
     float obstacle_rel_y[Num_Obstacles]; // y position relative drone
     int   drone_tile_x;                  // x position in tiles
