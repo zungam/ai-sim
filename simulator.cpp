@@ -9,10 +9,17 @@
 // robots are moving so darn slow. Helps me
 // visualize the dynamics better by speeding
 // it up.
-#define SPEED_MULTIPLIER 1
+#define SPEED_MULTIPLIER 4
+#define STATE_SEND_INTERVAL 0.25f
+
+// Apply stochastic bias to observed drone position
 // #define ENABLE_BIAS
-// #define ENABLE_AI_CMD
-#define ENABLE_AI_USERDATA
+
+// Respond to commands received from AI
+#define ENABLE_AI_CMD
+
+// Visualize probability density field
+// #define ENABLE_AI_USERDATA
 
 #ifndef PI
 #define PI 3.14159265359f
@@ -276,8 +283,10 @@ robot_integrate(sim_Robot *robot, float dt)
     #endif
     robot->q += w * dt;
 
-    while (robot->q >= TWO_PI)
+    while (robot->q > TWO_PI)
         robot->q -= TWO_PI;
+    while (robot->q < 0.0f)
+        robot->q += TWO_PI;
 
     robot->forward_x = cos(robot->q);
     robot->forward_y = sin(robot->q);
@@ -289,6 +298,19 @@ float
 vector_length(float dx, float dy)
 {
     return sqrt(dx*dx + dy*dy);
+}
+
+float
+compute_camera_view_radius(float height_above_ground)
+{
+    // Interpolates between 0.5 meters and
+    // 3 meters view radius when height goes
+    // from 0 to 2.5 meters.
+    float h0 = 0.0f;
+    float h1 = 3.0f;
+    float alpha = (drone.z - h0) / (h1 - h0);
+    float view_radius = 0.5f + 2.0f * alpha;
+    return view_radius;
 }
 
 void
@@ -480,6 +502,45 @@ advance_state(float dt)
         robots[i].vl = robots[i].action.left_wheel;
         robots[i].vr = robots[i].action.right_wheel;
     }
+
+    // Every _drone_bias_timer_ seconds there is a
+    // probability of a bias being added to the
+    // estimated drone position, in either coordinate,
+    // of one grid cell in meters.
+    #ifdef ENABLE_BIAS
+    persist r32 drone_bias_timer = 2.0f;
+    r32 drone_bias_probability = 0.5f;
+    drone_bias_timer -= dt;
+    if (drone_bias_timer <= 0.0f)
+    {
+        float p = frand();
+        if (p <= drone_bias_probability)
+        {
+            float random_meters;
+            float p2 = frand();
+            if (p2 < 0.5f)
+                random_meters = -1.0f;
+            else
+                random_meters = +1.0f;
+
+            if (p <= drone_bias_probability * 0.5f)
+                drone.bias_x += random_meters;
+            else
+                drone.bias_y += random_meters;
+        }
+        drone_bias_timer = 2.0f;
+    }
+    #endif
+
+    // Bias is eliminated in atleast one coordinate
+    // if the drone detects an edge of the map.
+    float drone_view_radius = compute_camera_view_radius(drone.z);
+    if (abs(drone.x -  0.0f) < drone_view_radius ||
+        abs(drone.x - 20.0f) < drone_view_radius)
+        drone.bias_x = 0.0f;
+    if (abs(drone.y -  0.0f) < drone_view_radius ||
+        abs(drone.y - 20.0f) < drone_view_radius)
+        drone.bias_y = 0.0f;
 }
 
 void
@@ -506,19 +567,6 @@ sim_load(VideoMode *mode)
     mode->stencil_bits = 8;
     mode->multisamples = 0;
     mode->swap_interval = 1;
-}
-
-float
-compute_camera_view_radius(float height_above_ground)
-{
-    // Interpolates between 0.5 meters and
-    // 3 meters view radius when height goes
-    // from 0 to 2.5 meters.
-    float h0 = 0.0f;
-    float h1 = 3.0f;
-    float alpha = (drone.z - h0) / (h1 - h0);
-    float view_radius = 0.5f + 2.0f * alpha;
-    return view_radius;
 }
 
 void
@@ -604,7 +652,7 @@ sim_init(VideoMode mode)
     drone.z1 = 0.0f;
     drone.z2 = 0.0f;
     drone.zr = 1.5f;
-    drone.v_max = 2.0f;
+    drone.v_max = 1.0f;
     drone.cmd.type = sim_CommandType_Search;
     drone.cmd.x = 10.0f;
     drone.cmd.y = 10.0f;
@@ -615,12 +663,16 @@ sim_init(VideoMode mode)
 }
 
 void
-sim_tick(VideoMode mode, float t, float dt)
+sim_tick(VideoMode mode, float app_time, float app_dt)
 {
     _ndc_scale_x = (1.0f / 12.0f) * mode.height / (float)mode.width;
     _ndc_scale_y = 1.0f / 12.0f;
 
     persist debug_UserData userdata;
+    persist float elapsed_sim_time = 0.0f;
+
+    float delta_time = app_dt * SPEED_MULTIPLIER;
+    elapsed_sim_time += delta_time;
 
     // Poll for commands sent to the drone
     sim_Command cmd = {};
@@ -653,22 +705,22 @@ sim_tick(VideoMode mode, float t, float dt)
     if (keys[SDL_SCANCODE_LEFT])
     {
         drone.cmd.type = sim_CommandType_Search;
-        drone.cmd.x -= 5.0f * dt;
+        drone.cmd.x -= 5.0f * app_dt;
     }
     if (keys[SDL_SCANCODE_RIGHT])
     {
         drone.cmd.type = sim_CommandType_Search;
-        drone.cmd.x += 5.0f * dt;
+        drone.cmd.x += 5.0f * app_dt;
     }
     if (keys[SDL_SCANCODE_UP])
     {
         drone.cmd.type = sim_CommandType_Search;
-        drone.cmd.y += 5.0f * dt;
+        drone.cmd.y += 5.0f * app_dt;
     }
     if (keys[SDL_SCANCODE_DOWN])
     {
         drone.cmd.type = sim_CommandType_Search;
-        drone.cmd.y -= 5.0f * dt;
+        drone.cmd.y -= 5.0f * app_dt;
     }
     if (keys[SDL_SCANCODE_SPACE])
     {
@@ -694,57 +746,18 @@ sim_tick(VideoMode mode, float t, float dt)
 
     for (u32 i = 0; i < SPEED_MULTIPLIER; i++)
     {
-        advance_state(dt);
+        advance_state(delta_time / (float)SPEED_MULTIPLIER);
     }
-
-    // Every _drone_bias_timer_ seconds there is a
-    // probability of a bias being added to the
-    // estimated drone position, in either coordinate,
-    // of one grid cell in meters.
-    #ifdef ENABLE_BIAS
-    persist r32 drone_bias_timer = 2.0f;
-    r32 drone_bias_probability = 0.5f;
-    drone_bias_timer -= dt;
-    if (drone_bias_timer <= 0.0f)
-    {
-        float p = frand();
-        if (p <= drone_bias_probability)
-        {
-            float random_meters;
-            float p2 = frand();
-            if (p2 < 0.5f)
-                random_meters = -1.0f;
-            else
-                random_meters = +1.0f;
-
-            if (p <= drone_bias_probability * 0.5f)
-                drone.bias_x += random_meters;
-            else
-                drone.bias_y += random_meters;
-        }
-        drone_bias_timer = 2.0f;
-    }
-    #endif
-
-    // Bias is eliminated in atleast one coordinate
-    // if the drone detects an edge of the map.
-    float drone_view_radius = compute_camera_view_radius(drone.z);
-    if (abs(drone.x -  0.0f) < drone_view_radius ||
-        abs(drone.x - 20.0f) < drone_view_radius)
-        drone.bias_x = 0.0f;
-    if (abs(drone.y -  0.0f) < drone_view_radius ||
-        abs(drone.y - 20.0f) < drone_view_radius)
-        drone.bias_y = 0.0f;
 
     // How often we send a state measurement
-    persist r32 state_send_timer = 1.0f;
+    persist r32 state_send_timer = STATE_SEND_INTERVAL;
 
-    state_send_timer -= dt;
+    state_send_timer -= app_dt;
     if (state_send_timer <= 0.0f)
     {
-        state_send_timer = 1.0f;
+        state_send_timer = STATE_SEND_INTERVAL;
         sim_State state = {};
-        state.elapsed_sim_time = t;
+        state.elapsed_sim_time = elapsed_sim_time;
 
         world_to_tile(drone.x + drone.bias_x,
                       drone.y + drone.bias_y,
