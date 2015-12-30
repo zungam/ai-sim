@@ -13,6 +13,11 @@ p_sim_step(p_State, dt)
 
 Interface with perception and control:
 How to give command "tap target %d"?
+
+Determine which action to take by simulating ahead:
+    Performance measure includes how far it got to
+    the green line, how far into the AVOID region it
+    went, how many times it collided...
 */
 
 #define SIM_CLIENT_CODE
@@ -77,6 +82,19 @@ float distance(BehaviourState a,
     return ds;
 }
 
+bool about_to_leave(float x, float y, float q,
+                    float time_until_reverse,
+                    float reversing)
+{
+    if (reversing)
+        return false;
+    float travel = time_until_reverse * Robot_Speed * sin(q);
+    if (y + travel > 21.0f)
+        return true;
+    else
+        return false;
+}
+
 Action select_action(float x, float y, float q,
                      float time_until_reverse, float reversing)
 {
@@ -116,8 +134,7 @@ Action select_action(float x, float y, float q,
     if (time_until_reverse < 5.0f)
         return action_Follow;
 
-    float travel = time_until_reverse * Robot_Speed * sin(q);
-    if (y + travel > 20.5f)
+    if (about_to_leave(x, y, q, time_until_reverse, reversing))
         return action_Return;
 
     float q_deg = q * 180.0f / One_Pi;
@@ -227,10 +244,11 @@ int main(int argc, char **argv)
                 if (state.target_in_view[target])
                 {
                     printf("saw %d\n", target);
-                    // TODO: Formalize this "ignore" range
-                    // It should also be based in time until reverse?
-                    if (drone_y + state.target_rel_y[target]
-                        >= 18.0f)
+                    float x = drone_x + state.target_rel_x[target];
+                    float y = drone_y + state.target_rel_y[target];
+                    float q = state.target_q[target];
+                    bool reversing = state.target_reversing[target];
+                    if (about_to_leave(x, y, q, time_until_reverse, reversing))
                     {
                         continue;
                     }

@@ -9,8 +9,8 @@
 // robots are moving so darn slow. Helps me
 // visualize the dynamics better by speeding
 // it up.
-#define SPEED_MULTIPLIER 4
-#define STATE_SEND_INTERVAL 0.25f
+#define SPEED_MULTIPLIER 10
+#define STATE_SEND_INTERVAL 0.1f
 
 // Apply stochastic bias to observed drone position
 // #define ENABLE_BIAS
