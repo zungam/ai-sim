@@ -10,6 +10,7 @@
 // visualize the dynamics better by speeding
 // it up.
 #define SPEED_MULTIPLIER 1
+#define STATE_SEND_INTERVAL (1.0f / (r32)SPEED_MULTIPLIER)
 
 #ifndef PI
 #define PI 3.14159265359f
@@ -240,8 +241,10 @@ robot_integrate(sim_Robot *robot, float dt)
     #endif
     robot->q += w * dt;
 
-    while (robot->q >= TWO_PI)
+    while (robot->q > TWO_PI)
         robot->q -= TWO_PI;
+    while (robot->q < 0.0f)
+        robot->q += TWO_PI;
 
     robot->tangent_x = cos(robot->q);
     robot->tangent_y = sin(robot->q);
@@ -556,7 +559,7 @@ sim_init(VideoMode mode)
     drone.z1 = 0.0f;
     drone.z2 = 0.0f;
     drone.zr = 1.5f;
-    drone.v_max = 2.0f;
+    drone.v_max = 1.0f;
     drone.cmd.type = sim_CommandType_Search;
     drone.cmd.x = 0.0f;
     drone.cmd.y = 0.0f;
@@ -565,11 +568,15 @@ sim_init(VideoMode mode)
 }
 
 void
-sim_tick(VideoMode mode, float t, float dt)
+sim_tick(VideoMode mode, float app_time, float app_dt)
 {
     float aspect = mode.width/(float)mode.height;
     float line_scale_x = aspect*12.0f;
     float line_scale_y = 12.0f;
+
+    persist float elapsed_sim_time = 0.0f;
+    float delta_time = app_dt * SPEED_MULTIPLIER;
+    elapsed_sim_time += delta_time;
 
     // Poll for commands sent to the drone
     sim_Command cmd = {};
@@ -599,22 +606,22 @@ sim_tick(VideoMode mode, float t, float dt)
     if (keys[SDL_SCANCODE_LEFT])
     {
         drone.cmd.type = sim_CommandType_Search;
-        drone.cmd.x -= 5.0f * dt;
+        drone.cmd.x -= 5.0f * app_dt;
     }
     if (keys[SDL_SCANCODE_RIGHT])
     {
         drone.cmd.type = sim_CommandType_Search;
-        drone.cmd.x += 5.0f * dt;
+        drone.cmd.x += 5.0f * app_dt;
     }
     if (keys[SDL_SCANCODE_UP])
     {
         drone.cmd.type = sim_CommandType_Search;
-        drone.cmd.y += 5.0f * dt;
+        drone.cmd.y += 5.0f * app_dt;
     }
     if (keys[SDL_SCANCODE_DOWN])
     {
         drone.cmd.type = sim_CommandType_Search;
-        drone.cmd.y -= 5.0f * dt;
+        drone.cmd.y -= 5.0f * app_dt;
     }
     if (keys[SDL_SCANCODE_SPACE])
     {
@@ -640,17 +647,16 @@ sim_tick(VideoMode mode, float t, float dt)
 
     for (u32 i = 0; i < SPEED_MULTIPLIER; i++)
     {
-        advance_state(dt);
+        advance_state(delta_time / (r32)SPEED_MULTIPLIER);
     }
 
-    // Send a test package once per second
-    persist r32 udp_send_timer = 1.0f;
-    udp_send_timer -= dt;
-    if (udp_send_timer <= 0.0f)
+    persist r32 state_send_timer = STATE_SEND_INTERVAL;
+    state_send_timer -= app_dt;
+    if (state_send_timer <= 0.0f)
     {
-        udp_send_timer = 1.0f;
+        state_send_timer = STATE_SEND_INTERVAL;
         sim_State state = {};
-        state.elapsed_sim_time = t;
+        state.elapsed_sim_time = elapsed_sim_time;
 
         state.drone_x = drone.x;
         state.drone_y = drone.y;

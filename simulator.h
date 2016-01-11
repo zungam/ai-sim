@@ -46,23 +46,35 @@ struct sim_State
 {
     float elapsed_sim_time;
 
+    // World-space coordinate system
+    // x=0        x=20
+    // y=20       y=20
+    //  +----------+  ^ +y
+    //  |  GREEN   |  |
+    //  |          |  |
+    //  |          |  |
+    //  |   RED    |  |
+    //  +----------+  +-------> +x
+    // x=0        x=20
+    // y=0        y=0
+
     float target_x[Num_Targets];  // x position
     float target_y[Num_Targets];  // y position
     float target_vx[Num_Targets]; // x velocity
     float target_vy[Num_Targets]; // y velocity
-    float target_q[Num_Targets];  // angle relative x-axis
+    float target_q[Num_Targets];  // angle relative x-axis (positive ccw)
 
     float obstacle_x[Num_Obstacles];  // x position
     float obstacle_y[Num_Obstacles];  // y position
     float obstacle_vx[Num_Obstacles]; // x velocity
     float obstacle_vy[Num_Obstacles]; // y velocity
-    float obstacle_q[Num_Obstacles];  // angle relative x-axis
+    float obstacle_q[Num_Obstacles];  // angle relative x-axis (positive ccw)
 
-    float drone_x;     // x position
-    float drone_y;     // y position
-    float drone_z;     // height
-    float drone_vx;    // x velocity
-    float drone_vy;    // y velocity
+    float drone_x;  // x position
+    float drone_y;  // y position
+    float drone_z;  // height
+    float drone_vx; // x velocity
+    float drone_vy; // y velocity
 
     // This is set to true once the drone has successfully
     // finished its given command. Some commands, like track,
