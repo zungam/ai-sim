@@ -1,6 +1,7 @@
 #include "SDL.h"
 #include "SDL_opengl.h"
 #include "SDL_assert.h"
+#include <stdlib.h>
 
 #define Assert SDL_assert
 #define Printf SDL_Log
@@ -64,6 +65,18 @@ float time_since(u64 then)
     return get_elapsed_time(then, now);
 }
 
+float frand()
+{
+    return (float)rand() / (float)RAND_MAX;
+}
+
+int random_0_64()
+{
+    // It's bad but whatever
+    // https://channel9.msdn.com/Events/GoingNative/2013/rand-Considered-Harmful
+    return rand() % 65;
+}
+
 #ifdef __cplusplus
 extern "C"
 #endif
@@ -74,6 +87,8 @@ int main(int argc, char *argv[])
         Printf("Failed to initialize SDL: %s\n", SDL_GetError());
         return -1;
     }
+
+    srand((int)get_tick());
 
     VideoMode mode = default_video_mode();
     sim_load(&mode);
