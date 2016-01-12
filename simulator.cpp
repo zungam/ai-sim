@@ -10,7 +10,7 @@
 // visualize the dynamics better by speeding
 // it up.
 #define SPEED_MULTIPLIER 10
-#define STATE_SEND_INTERVAL 0.1f
+#define STATE_SEND_INTERVAL (1.0f / (r32)SPEED_MULTIPLIER)
 
 // Apply stochastic bias to observed drone position
 // #define ENABLE_BIAS
