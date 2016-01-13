@@ -3,3 +3,5 @@ build/*
 !build/*.dll
 !build/*.sh
 !build/*.bat
+*.o
+bin/
