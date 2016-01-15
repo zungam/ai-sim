@@ -50,22 +50,22 @@ typedef int8_t      s08;
 
 // How many meters the drone should be near to
 // a robot before it is considered to be above it.
-#define Sim_Drone_Target_Proximity (0.5f)
+#define Sim_Drone_Target_Proximity (0.1f)
 
 // How many meters the drone should be near to
 // a point in world space before it is considered
 // to have reached it.
-#define Sim_Drone_Goto_Proximity (0.5f)
+#define Sim_Drone_Goto_Proximity (0.1f)
 
 // How many seconds it should take for the drone
 // to complete a LandOnTopOf command, once it
 // enters the target proximity range.
-#define Sim_LandOnTopOf_Time (1.0f)
+#define Sim_LandOnTopOf_Time (2.0f)
 
 // How many seconds it should take for the drone
 // to complete a LandInFrontOf command, once it
 // enters the target proximity range.
-#define Sim_LandInFrontOf_Time (1.0f)
+#define Sim_LandInFrontOf_Time (2.0f)
 
 // How many meters must a target walk beyond
 // an edge to be removed
@@ -73,6 +73,8 @@ typedef int8_t      s08;
 
 // Distance between iRobot wheels in metres
 #define Sim_Robot_Wheel_Distance (0.5f)
+#define Sim_Target_Init_Radius (1.0f)
+#define Sim_Obstacle_Init_Radius (5.0f)
 
 struct sim_State
 {
@@ -635,8 +637,8 @@ int sim_init(int seed, sim_State *init_state)
 
     DRONE->x = 10.0f;
     DRONE->y = 10.0f;
-    DRONE->xr = 0.0f;
-    DRONE->yr = 0.0f;
+    DRONE->xr = 10.0f;
+    DRONE->yr = 10.0f;
     DRONE->v_max = 1.0f;
     DRONE->cmd.type = sim_CommandType_NoCommand;
     DRONE->cmd.x = 0.0f;
@@ -660,15 +662,12 @@ int sim_init(int seed, sim_State *init_state)
         // the +-9mm/s number. (Does it actually refer to
         // angular velocity?).
 
-        // TODO:
-        // #define Sim_Target_L 0.5f
-        // #define Sim_Target_Init_Radius 1.0f
         robot.L = Sim_Robot_Wheel_Distance;
 
         // Spawn each ground robot in a circle
         float t = TWO_PI * i / (float)(Num_Targets);
-        robot.x = 10.0f + 1.0f * cos(t);
-        robot.y = 10.0f + 1.0f * sin(t);
+        robot.x = 10.0f + Sim_Target_Init_Radius * cos(t);
+        robot.y = 10.0f + Sim_Target_Init_Radius * sin(t);
         robot.q = t;
         robot.internal.initialized = false;
         robot.state = Robot_Start;
@@ -687,10 +686,8 @@ int sim_init(int seed, sim_State *init_state)
 
         // The obstacles are also spawned in a circle,
         // but at an initial radius of 5 meters.
-        // TODO:
-        // #define Sim_Obstacle_Init_Radius 5.0f
-        robot.x = 10.0f + 5.0f * cos(t);
-        robot.y = 10.0f + 5.0f * sin(t);
+        robot.x = 10.0f + Sim_Obstacle_Init_Radius * cos(t);
+        robot.y = 10.0f + Sim_Obstacle_Init_Radius * sin(t);
         robot.q = t + PI / 2.0f;
         robot.internal.initialized = false;
         robot.state = Robot_Start;
