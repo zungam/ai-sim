@@ -39,6 +39,8 @@
 #define Num_Robots (Num_Obstacles + Num_Targets)
 
 #include <stdint.h>
+typedef float       r32;
+typedef uint64_t    u64;
 typedef uint32_t    u32;
 typedef uint16_t    u16;
 typedef uint8_t     u08;
@@ -68,6 +70,9 @@ typedef int8_t      s08;
 // How many meters must a target walk beyond
 // an edge to be removed
 #define Sim_Target_Removal_Margin (0.5f)
+
+// Distance between iRobot wheels in metres
+#define Sim_Robot_Wheel_Distance (0.5f)
 
 struct sim_State
 {
@@ -658,7 +663,7 @@ int sim_init(int seed, sim_State *init_state)
         // TODO:
         // #define Sim_Target_L 0.5f
         // #define Sim_Target_Init_Radius 1.0f
-        robot.L = 0.5f;
+        robot.L = Sim_Robot_Wheel_Distance;
 
         // Spawn each ground robot in a circle
         float t = TWO_PI * i / (float)(Num_Targets);
@@ -678,9 +683,7 @@ int sim_init(int seed, sim_State *init_state)
 
         sim_Robot robot = {};
 
-        // TODO: Verify the distance between the wheels
-        // #define Sim_Obstacle_Wheel_Distance 0.5f
-        robot.L = 0.5f;
+        robot.L = Sim_Robot_Wheel_Distance;
 
         // The obstacles are also spawned in a circle,
         // but at an initial radius of 5 meters.

@@ -1,8 +1,6 @@
 #define SIM_IMPLEMENTATION
 #include "sim.h"
 
-#include "gui.h"
-
 #define global static
 #define persist static
 
@@ -30,6 +28,12 @@ struct VideoMode
     // specify -1 to allow late swaps to happen immediately
     // instead of waiting for the next retrace.
     int swap_interval;
+
+    // Instead of using vsync, you can specify a desired framerate
+    // that the application will attempt to keep. If a frame rendered
+    // too fast, it will sleep the remaining time. Leave swap_interval
+    // at 0 when using this.
+    int fps_lock;
 };
 
 VideoMode default_video_mode()
@@ -68,28 +72,72 @@ u64 get_tick()
     return SDL_GetPerformanceCounter();
 }
 
-float get_elapsed_time(u64 begin, u64 end)
+r32 get_elapsed_time(u64 begin, u64 end)
 {
     u64 frequency = SDL_GetPerformanceFrequency();
-    return (float)(end - begin) / (float)frequency;
+    return (r32)(end - begin) / (r32)frequency;
 }
 
-float time_since(u64 then)
+r32 time_since(u64 then)
 {
     u64 now = get_tick();
     return get_elapsed_time(then, now);
 }
 
-float frand()
+global r32 ndc_scale_x;
+global r32 ndc_scale_y;
+
+void world_to_ndc(float x_world, float y_world,
+                  float *x_ndc, float *y_ndc)
 {
-    return (float)rand() / (float)RAND_MAX;
+    *x_ndc = (x_world - 10.0f) * ndc_scale_x;
+    *y_ndc = (y_world - 10.0f) * ndc_scale_y;
 }
 
-int random_0_64()
+void vertex2f(float x, float y)
 {
-    // It's bad but whatever
-    // https://channel9.msdn.com/Events/GoingNative/2013/rand-Considered-Harmful
-    return rand() % 65;
+    float x_ndc, y_ndc;
+    world_to_ndc(x, y, &x_ndc, &y_ndc);
+    glVertex2f(x_ndc, y_ndc);
+}
+
+void draw_robot(r32 x, r32 y, r32 q, bool removed)
+{
+    draw_circle(x, y, );
+    draw_line(x, y, x + l*cos(q), y + l*sin(q));
+}
+
+void gui_tick(VideoMode mode, float gui_time, float gui_dt)
+{
+    ndc_scale_x = (mode.height / (r32)mode.width) / 12.0f;
+    ndc_scale_y = 1.0f / 12.0f;
+    persist bool loaded = false;
+    if (!loaded)
+    {
+        sim_init((int)get_tick(), 0);
+        loaded = true;
+    }
+    sim_Command cmd;
+    cmd.type = sim_CommandType_NoCommand;
+    sim_State state = sim_tick(cmd);
+
+    glViewport(0, 0, mode.width, mode.height);
+    glClearColor(1.0f, 0.4f, 0.4f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glLineWidth(2.0f);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glBegin(GL_LINES);
+    for (s32 i = 0; i < Num_Targets; i++)
+    {
+        float x = state.target_x[i];
+        float y = state.target_y[i];
+
+        vertex2f(0.0f, 0.0f);
+        vertex2f(x, y);
+    }
+    glEnd();
 }
 
 int main(int argc, char *argv[])
@@ -99,8 +147,6 @@ int main(int argc, char *argv[])
         Printf("Failed to initialize SDL: %s\n", SDL_GetError());
         return -1;
     }
-
-    srand((int)get_tick());
 
     VideoMode mode = default_video_mode();
 
@@ -145,8 +191,8 @@ int main(int argc, char *argv[])
     bool running = true;
     u64 initial_tick = get_tick();
     u64 last_frame_t = initial_tick;
-    float elapsed_time = 0.0f;
-    float delta_time = 1.0f / 60.0f;
+    r32 elapsed_time = 0.0f;
+    r32 delta_time = 1.0f / 60.0f;
     while (running)
     {
         SDL_Event event;
@@ -186,14 +232,14 @@ int main(int argc, char *argv[])
         SDL_GL_SwapWindow(window);
 
         delta_time = time_since(last_frame_t);
-
-        // TODO: FPS lock
-        #if 0
-        float sleep_time = FRAME_TIME - delta_time;
-        if (sleep_time >= 0.0f && sleep_time >= SLEEP_GRANULARITY)
-            SDL_Delay((u32)(sleep_time * 1000.0f));
-        delta_time = time_since(last_frame_t);
-        #endif
+        if (mode.fps_lock > 0)
+        {
+            r32 target_time = 1.0f / (r32)mode.fps_lock;
+            r32 sleep_time = target_time - delta_time;
+            if (sleep_time >= 0.01f)
+                SDL_Delay((u32)(sleep_time * 1000.0f));
+            delta_time = time_since(last_frame_t);
+        }
         last_frame_t = get_tick();
         elapsed_time = time_since(initial_tick);
 
