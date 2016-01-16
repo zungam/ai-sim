@@ -503,7 +503,7 @@ sim_load(VideoMode *mode)
     mode->double_buffer = 1;
     mode->depth_bits = 24;
     mode->stencil_bits = 8;
-    mode->multisamples = 0;
+    mode->multisamples = 4;
     mode->swap_interval = 1;
 }
 
@@ -745,10 +745,9 @@ sim_tick(VideoMode mode, float t, float dt)
         sim_State state = {};
         state.elapsed_sim_time = t;
 
-        world_to_tile(drone.x + drone.bias_x,
-                      drone.y + drone.bias_y,
-                      &state.drone_tile_x,
-                      &state.drone_tile_y);
+        state.drone_x = drone.x;
+        state.drone_y = drone.y;
+
         state.drone_cmd_complete = drone.cmd_complete;
 
         for (u32 i = 0; i < Num_Targets; i++)
@@ -807,20 +806,15 @@ sim_tick(VideoMode mode, float t, float dt)
                 tile_to_world(xi+1, yi+1, &x2, &y2);
                 float s = (float)userdata.strength[yi][xi] / 255.0f;
 
-                // Colorful color palette
-                // float r = 0.5f + 0.5f*sin(6.2832f*(0.3f*s+0.8f));
-                // float g = 0.5f + 0.5f*sin(6.2832f*(0.5f*s+0.9f));
-                // float b = 0.5f + 0.5f*sin(6.2832f*(0.25f*s+0.3f));
+                float r = 0.28f + 0.29f*sin(6.2832f*(0.45f*s+0.77f));
+                float g = 0.48f + 0.32f*sin(6.2832f*(0.50f*s+0.73f));
+                float b = 0.48f + 0.27f*sin(6.2832f*(0.12f*s+0.93f));
 
-                float r = s * 0.27f;
-                float g = s * 0.14f;
-                float b = s * 0.20f;
-                if (s > 0.5f)
-                {
-                    r = s * 0.62f;
-                    g = s * 0.22f;
-                    b = s * 0.18f;
-                }
+                // 0.8 0.24 0.19
+
+                // float r = 0.54f + 0.50f*sin(6.2832f*(0.5f*s+0.7f));
+                // float g = 0.55f + 0.50f*sin(6.2832f*(0.5f*s+0.8f));
+                // float b = 0.56f + 0.70f*sin(6.2832f*(0.5f*s+0.88f));
                 float a = 1.0f;
                 glColor4f(r, g, b, a);
                 fill_square(x1, y1, x2, y2);
@@ -859,14 +853,18 @@ sim_tick(VideoMode mode, float t, float dt)
         draw_line(0.0f, 20.0f, 20.0f, 20.0f);
 
         // draw targets
-        set_color(0.85, 0.83, 0.37, 1.0f);
+        set_color(1.0f, 1.0f, 1.0f, 1.0f);
         for (u32 i = 0; i < Num_Targets; i++)
         {
+            #if 0
             float observation_radius = compute_camera_view_radius(drone.z);
             float dist = vector_length(targets[i].x - drone.x,
                                        targets[i].y - drone.y);
             if (dist < observation_radius)
                 draw_robot(&targets[i]);
+            #else
+            draw_robot(&targets[i]);
+            #endif
         }
 
         // draw obstacles

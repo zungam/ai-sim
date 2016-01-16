@@ -78,8 +78,8 @@ struct sim_State
     float target_q[Num_Targets];         // Angle relative x-axis
     float obstacle_rel_x[Num_Obstacles]; // x position relative drone
     float obstacle_rel_y[Num_Obstacles]; // y position relative drone
-    int   drone_tile_x;                  // x position in tiles
-    int   drone_tile_y;                  // y position in tiles
+    float drone_x;
+    float drone_y;
 
     // This is set to true once the drone has successfully
     // finished its given command. Some commands, like track,

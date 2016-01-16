@@ -5,7 +5,7 @@
 #include <math.h>
 #include <stdlib.h>
 #define Tile_Dim 20
-#define Num_Sims 1024
+#define Num_Sims 512
 #define for_each_tile(it)    for (int it = 0; it < Tile_Dim*Tile_Dim; it++)
 #define for_each_tilerow(it) for (int it = 0; it < Tile_Dim;          it++)
 #define for_each_target(it)  for (int it = 0; it < Num_Targets;       it++)
@@ -13,7 +13,7 @@
 #define Two_Pi 6.28318530718f
 #define One_Pi 3.14159265359f
 
-#define Reverse_Interval 20.0f
+#define Reverse_Interval 20.5f
 #define Target_Speed 0.33f
 #define Target_Collision_Radius 0.7f
 #define Target_Collision_Radius2 (Target_Collision_Radius*Target_Collision_Radius)
@@ -124,7 +124,7 @@ int find_closest_target(float *src_x, float *src_y,
                         float query_x, float query_y)
 {
     int best_i = 0;
-    float best_dp = 0.0f;
+    float best_dp = 50.0f;
     for_each_target(target)
     {
         float dx = src_x[target] - query_x;
@@ -171,11 +171,8 @@ int main(int argc, char **argv)
         float elapsed_time = state.elapsed_sim_time;
         last_elapsed_time = elapsed_time;
 
-        float drone_x;
-        float drone_y;
-        tile_to_world(state.drone_tile_x,
-                      state.drone_tile_y,
-                      &drone_x, &drone_y);
+        float drone_x = state.drone_x;
+        float drone_y = state.drone_y;
 
         bool any_target_in_view = false;
         int num_seen = 0;
@@ -230,7 +227,7 @@ int main(int argc, char **argv)
                 // insert particles that we know is in view
                 // but we think aren't.
                 // Currently disabled because it does not work well
-                #if 0
+                #if 1
                 else if (any_target_in_view)
                 {
                     for (int i = 0; i < num_seen; i++)
@@ -242,7 +239,7 @@ int main(int argc, char **argv)
                                                           sims[sim].y,
                                                           sx, sy);
                         sims[sim].x[closest] = sx;
-                        sims[sim].y[closest] = sx;
+                        sims[sim].y[closest] = sy;
                         sims[sim].q[closest] = sq;
                         // todo: Estimate reverse timer
                     }
