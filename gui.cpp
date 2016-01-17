@@ -12,6 +12,18 @@
 #define Assert SDL_assert
 #define Printf SDL_Log
 
+struct Color
+{
+    float r, g, b, a;
+};
+
+struct HistoryEntry
+{
+    sim_Command cmd;
+    HistoryEntry *prev;
+    HistoryEntry *next;
+};
+
 struct VideoMode
 {
     int width;
@@ -46,7 +58,7 @@ VideoMode default_video_mode()
     mode.double_buffer = 1;
     mode.depth_bits = 24;
     mode.stencil_bits = 8;
-    mode.multisamples = 0;
+    mode.multisamples = 4;
     mode.swap_interval = 1;
     return mode;
 }
@@ -86,6 +98,34 @@ r32 time_since(u64 then)
 
 global r32 ndc_scale_x;
 global r32 ndc_scale_y;
+struct History
+{
+
+    HistoryEntry *first;
+    HistoryEntry *last;
+    s32 count;
+};
+
+global History history;
+
+void history_Add(sim_Command cmd)
+{
+    HistoryEntry *entry = new HistoryEntry;
+    if (!history.first)
+    {
+        entry->prev = 0;
+        entry->next = 0;
+        history.first = entry;
+        history.last = entry;
+    }
+    else
+    {
+        history.last->next = entry;
+        entry->prev = history.last;
+        entry->next = 0;
+    }
+    history.count++;
+}
 
 void world_to_ndc(r32 x_world, r32 y_world,
                   r32 *x_ndc, r32 *y_ndc)
@@ -99,6 +139,11 @@ void vertex2f(r32 x, r32 y)
     r32 x_ndc, y_ndc;
     world_to_ndc(x, y, &x_ndc, &y_ndc);
     glVertex2f(x_ndc, y_ndc);
+}
+
+void color4f(Color color)
+{
+    glColor4f(color.r, color.g, color.b, color.a);
 }
 
 void draw_line(r32 x1, r32 y1, r32 x2, r32 y2)
@@ -171,6 +216,21 @@ void draw_robot(sim_Robot robot)
 
 void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
 {
+    persist bool flag_DrawDroneGoto     = true;
+    persist bool flag_DrawDrone         = true;
+    persist bool flag_DrawVisibleRegion = true;
+    persist bool flag_DrawTargets       = true;
+    persist bool flag_DrawObstacles     = true;
+
+    persist Color color_Clear         = { 0.00f, 0.00f, 0.00f, 1.00f };
+    persist Color color_Grid          = { 0.87f, 0.93f, 0.84f, 0.20f };
+    persist Color color_VisibleRegion = { 0.87f, 0.93f, 0.84f, 0.50f };
+    persist Color color_GreenLine     = { 0.43f, 0.67f, 0.17f, 1.00f };
+    persist Color color_Targets       = { 0.85f, 0.83f, 0.37f, 1.00f };
+    persist Color color_Obstacles     = { 0.43f, 0.76f, 0.79f, 1.00f };
+    persist Color color_Drone         = { 0.87f, 0.93f, 0.84f, 0.50f };
+    persist Color color_DroneGoto     = { 0.87f, 0.93f, 0.84f, 0.50f };
+
     ndc_scale_x = (mode.height / (r32)mode.width) / 12.0f;
     ndc_scale_y = 1.0f / 12.0f;
     sim_Command cmd;
@@ -179,7 +239,10 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     sim_State state = sim_tick(cmd);
 
     glViewport(0, 0, mode.width, mode.height);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearColor(color_Clear.r,
+                 color_Clear.g,
+                 color_Clear.b,
+                 color_Clear.a);
     glClear(GL_COLOR_BUFFER_BIT);
     glLineWidth(2.0f);
     glEnable(GL_BLEND);
@@ -188,7 +251,7 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     glBegin(GL_LINES);
     {
         // draw grid
-        glColor4f(0.87f, 0.93f, 0.84f, 0.2f);
+        color4f(color_Grid);
         for (u32 i = 0; i <= 20; i++)
         {
             float x = (float)i;
@@ -197,33 +260,48 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         }
 
         // draw visible region
-        glColor4f(0.87f, 0.93f, 0.84f, 0.5f);
-        draw_circle(DRONE->x, DRONE->y, 2.5f);
+        if (flag_DrawVisibleRegion)
+        {
+            color4f(color_VisibleRegion);
+            draw_circle(DRONE->x, DRONE->y, 2.5f);
+        }
 
         // draw green line
-        glColor4f(0.43f, 0.67f, 0.17f, 1.0f);
+        color4f(color_GreenLine);
         draw_line(0.0f, 20.0f, 20.0f, 20.0f);
 
         // draw targets
-        glColor4f(0.85, 0.83, 0.37, 1.0f);
-        for (u32 i = 0; i < Num_Targets; i++)
-            draw_robot(TARGETS[i]);
+        if (flag_DrawTargets)
+        {
+            color4f(color_Targets);
+            for (u32 i = 0; i < Num_Targets; i++)
+                draw_robot(TARGETS[i]);
+        }
 
         // draw obstacles
-        glColor4f(0.43, 0.76, 0.79, 1.0f);
-        for (u32 i = 0; i < Num_Obstacles; i++)
-            draw_robot(OBSTACLES[i]);
+        if (flag_DrawObstacles)
+        {
+            color4f(color_Obstacles);
+            for (u32 i = 0; i < Num_Obstacles; i++)
+                draw_robot(OBSTACLES[i]);
+        }
 
         // draw drone
-        glColor4f(0.87f, 0.93f, 0.84f, 0.5f);
-        draw_line(DRONE->x - 0.5f, DRONE->y,
-                  DRONE->x + 0.5f, DRONE->y);
-        draw_line(DRONE->x, DRONE->y - 0.5f,
-                  DRONE->x, DRONE->y + 0.5f);
+        if (flag_DrawDrone)
+        {
+            color4f(color_Drone);
+            draw_line(DRONE->x - 0.5f, DRONE->y,
+                      DRONE->x + 0.5f, DRONE->y);
+            draw_line(DRONE->x, DRONE->y - 0.5f,
+                      DRONE->x, DRONE->y + 0.5f);
+        }
 
         // draw drone goto
-        glColor4f(0.87f, 0.93f, 0.84f, 0.5f);
-        draw_circle(DRONE->xr, DRONE->yr, 0.45f);
+        if (flag_DrawDroneGoto)
+        {
+            color4f(color_DroneGoto);
+            draw_circle(DRONE->xr, DRONE->yr, 0.45f);
+        }
 
         // draw indicators of magnet or bumper activations
         for (u32 i = 0; i < Num_Targets; i++)
