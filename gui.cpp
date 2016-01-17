@@ -1,3 +1,11 @@
+/* TODO:
+- Integrate ImGUI: https://github.com/ocornut/imgui
+- Implement rewind/seeking: Need to change sim API to
+  expose internal state.
+
+- Synchronize sim_timestep with speed of application
+*/
+
 #define SIM_IMPLEMENTATION
 #include "sim.h"
 
@@ -371,7 +379,7 @@ int main(int argc, char *argv[])
     gui_init_msgs(true);
     #endif
 
-    sim_init((int)get_tick(), 0);
+    sim_init((u32)get_tick(), 0);
 
     bool running = true;
     u64 initial_tick = get_tick();

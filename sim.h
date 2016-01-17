@@ -32,7 +32,7 @@
 
 #ifndef SIM_HEADER_INCLUDE
 #define SIM_HEADER_INCLUDE
-#define Sim_Timestep (0.01f)
+#define Sim_Timestep (1.0f / 60.0f)
 #define Sim_Drone_View_Radius (2.5f)
 #define Num_Obstacles (4)
 #define Num_Targets (10)
@@ -109,17 +109,6 @@ struct sim_Command
     int i;
 };
 
-// This algorithm has a maximal period of 2^128 − 1.
-// https://en.wikipedia.org/wiki/Xorshift
-#if 0
-u32 sim_xor128(u32 x, u32 y u32 z u32 w)
-{
-    u32 t = x ^ (x << 11);
-    x = y; y = z; z = w;
-    return w = w ^ (w >> 19) ^ t ^ (t >> 8);
-}
-#endif
-
 /* TODO:
 sim_State sim_init(int seed, sim_State *init_state);
 
@@ -131,7 +120,7 @@ Seed should not affect the parameters however.
 sim_State sim_tick(sim_State state, sim_Command cmd);
 */
 
-int sim_init(int seed, sim_State *init_state);
+u32 sim_init(u32 seed, sim_State *init_state);
 // seed
 //     Will be used to seed the random number generator, that affects
 //     perturbations in the targets' movement. Two program with the
@@ -167,6 +156,7 @@ sim_State sim_tick(sim_Command cmd);
 #include <stdlib.h> // for rand and srand
 #include <math.h> // for abs, cos, sin
 #include <time.h> // for time(.)
+#include <stdio.h>
 
 #ifdef SIM_IMPLEMENTATION
 #ifndef PI
@@ -207,39 +197,6 @@ struct sim_World_Pos
 // positive counter-clockwise, wrapped to the
 // half-open interval [0, 2xPi).
 typedef float sim_World_Angle;
-
-int random_0_64()
-{
-    // It's bad but whatever
-    // https://channel9.msdn.com/Events/GoingNative/2013/rand-Considered-Harmful
-    return rand() % 65;
-}
-
-// ***********************************************************************
-// What follows is mostly a transcription of the given IARC Mission 7
-// iRobot code, available here:
-//   http://www.aerialroboticscompetition.org/stories/stories4.php
-// ***********************************************************************
-#define Meters 1.0f
-#define Millimeters 0.001f
-#define Seconds 1.0f
-#define Robot_Speed (330.0f * Millimeters / Seconds)
-
-// Time between trajectory noise injections
-#define Noise_Interval (5.0f * Seconds)
-
-// Time between auto-reverse
-#define Reverse_Interval (20.0f * Seconds)
-
-// Time needed to affect trajectory
-#define Noise_Length (0.850f * Seconds)
-
-// Time needed to reverse trajectory
-// (.33/2 m/s * pi * wheelbase / 2)
-#define Reverse_Length (2.456f * Seconds)
-
-// Time needed to spin 45 degrees
-#define Top_Touch_Time (Reverse_Length / 4.0f)
 
 enum robot_State
 {
@@ -293,18 +250,160 @@ struct robot_Action
     bool was_bumped;
 };
 
+struct sim_Robot
+{
+    robot_State state;
+    robot_Internal internal;
+    robot_Action action;
+
+    float x;
+    float y;
+    sim_World_Angle q;
+
+    // Physical parameters
+    float L;  // distance between wheels (m)
+    float vl; // left-wheel speed (m/s)
+    float vr; // right-wheel speed (m/s)
+
+    float tangent_x;
+    float tangent_y;
+    float forward_x;
+    float forward_y;
+
+    bool removed;
+};
+
+struct sim_Drone
+{
+    float x;
+    float y;
+    float xr;
+    float yr;
+    float v_max;
+    sim_Command cmd;
+    bool cmd_done;
+
+    bool landing;
+    float land_timer;
+};
+
+struct sim_Internal
+{
+    // Random-number-generator state
+    u32 xor128_x;
+    u32 xor128_y;
+    u32 xor128_z;
+    u32 xor128_w;
+
+    sim_Time elapsed_time;
+    sim_Drone drone;
+    sim_Robot robots[Num_Robots];
+};
+
+// Global variables
+static sim_Internal INTERNAL;
+static sim_Robot *ROBOTS;
+static sim_Robot *OBSTACLES;
+static sim_Robot *TARGETS;
+static sim_Drone *DRONE;
+
+static void
+seed_xor128(u32 seed)
+{
+    // Pick out some pieces of the number
+    // TODO: Does this pattern generate bad sequences?
+    INTERNAL.xor128_x = seed & 0xaa121212;
+    INTERNAL.xor128_y = seed & 0x21aa2121;
+    INTERNAL.xor128_z = seed & 0x1212aa12;
+    INTERNAL.xor128_w = seed & 0x212a12aa;
+
+    // Seeds must be nonzero
+    if (INTERNAL.xor128_x == 0) INTERNAL.xor128_x++;
+    if (INTERNAL.xor128_y == 0) INTERNAL.xor128_y++;
+    if (INTERNAL.xor128_z == 0) INTERNAL.xor128_z++;
+    if (INTERNAL.xor128_w == 0) INTERNAL.xor128_w++;
+}
+
+// This algorithm has a maximal period of 2^128 − 1.
+// https://en.wikipedia.org/wiki/Xorshift
+static void
+xor128(u32 *in_out_x,
+       u32 *in_out_y,
+       u32 *in_out_z,
+       u32 *in_out_w)
+{
+    u32 x = *in_out_x;
+    u32 y = *in_out_y;
+    u32 z = *in_out_z;
+    u32 w = *in_out_w;
+    u32 t = x ^ (x << 11);
+    *in_out_x = y;
+    *in_out_y = z;
+    *in_out_z = w;
+    *in_out_w = w ^ (w >> 19) ^ t ^ (t >> 8);
+}
+
+static u32
+_xor128()
+{
+    xor128(&INTERNAL.xor128_x,
+           &INTERNAL.xor128_y,
+           &INTERNAL.xor128_z,
+           &INTERNAL.xor128_w);
+    u32 result = INTERNAL.xor128_w;
+    return result;
+}
+
+static int
+random_0_64()
+{
+    return _xor128() % 65;
+}
+
+// ***********************************************************************
+// What follows is mostly a transcription of the given IARC Mission 7
+// iRobot code, available here:
+//   http://www.aerialroboticscompetition.org/stories/stories4.php
+// ***********************************************************************
+#define Meters 1.0f
+#define Millimeters 0.001f
+#define Seconds 1.0f
+#define Robot_Speed (330.0f * Millimeters / Seconds)
+
+// Time between trajectory noise injections
+#define Noise_Interval (5.0f * Seconds)
+
+// Time between auto-reverse
+#define Reverse_Interval (20.0f * Seconds)
+
+// Time needed to affect trajectory
+#define Noise_Length (0.850f * Seconds)
+
+// Time needed to reverse trajectory
+// (.33/2 m/s * pi * wheelbase / 2)
+#define Reverse_Length (2.456f * Seconds)
+
+// Time needed to spin 45 degrees
+#define Top_Touch_Time (Reverse_Length / 4.0f)
+
 #define TransitionTo(state)                \
     {                                      \
     state##Start(event, internal, action); \
     return Robot_##state;                  \
     }
 
-void ObstacleWaitStart(robot_Event event, robot_Internal *internal, robot_Action *action)
+static void
+ObstacleWaitStart(robot_Event event,
+                  robot_Internal *internal,
+                  robot_Action *action)
 {
     action->red_led = 1;
 }
 
-void ObstacleRunStart(robot_Event event, robot_Internal *internal, robot_Action *action)
+static void
+ObstacleRunStart(robot_Event event,
+                 robot_Internal *internal,
+                 robot_Action *action)
 {
     action->red_led = 1;
     action->green_led = 0;
@@ -312,7 +411,10 @@ void ObstacleRunStart(robot_Event event, robot_Internal *internal, robot_Action 
     action->right_wheel = Robot_Speed + 9 * Millimeters / Seconds;
 }
 
-void ObstacleCollisionStart(robot_Event event, robot_Internal *internal, robot_Action *action)
+static void
+ObstacleCollisionStart(robot_Event event,
+                       robot_Internal *internal,
+                       robot_Action *action)
 {
     action->left_wheel = 0.0f;
     action->right_wheel = 0.0f;
@@ -320,12 +422,18 @@ void ObstacleCollisionStart(robot_Event event, robot_Internal *internal, robot_A
     action->green_led = 1;
 }
 
-void TargetWaitStart(robot_Event event, robot_Internal *internal, robot_Action *action)
+static void
+TargetWaitStart(robot_Event event,
+                robot_Internal *internal,
+                robot_Action *action)
 {
     action->green_led = 1;
 }
 
-void TargetRunStart(robot_Event event, robot_Internal *internal, robot_Action *action)
+static void
+TargetRunStart(robot_Event event,
+               robot_Internal *internal,
+               robot_Action *action)
 {
     action->left_wheel = Robot_Speed;
     action->right_wheel = Robot_Speed;
@@ -333,7 +441,10 @@ void TargetRunStart(robot_Event event, robot_Internal *internal, robot_Action *a
     action->red_led = 0;
 }
 
-void TrajectoryNoiseStart(robot_Event event, robot_Internal *internal, robot_Action *action)
+static void
+TrajectoryNoiseStart(robot_Event event,
+                     robot_Internal *internal,
+                     robot_Action *action)
 {
     int offset = random_0_64() - 32;
     float offset_mps = (float)offset * Millimeters / Seconds;
@@ -343,7 +454,10 @@ void TrajectoryNoiseStart(robot_Event event, robot_Internal *internal, robot_Act
     internal->begin_noise = event.elapsed_time;
 }
 
-void ReverseStart(robot_Event event, robot_Internal *internal, robot_Action *action)
+static void
+ReverseStart(robot_Event event,
+             robot_Internal *internal,
+             robot_Action *action)
 {
     action->left_wheel = -Robot_Speed / 2.0f;
     action->right_wheel = Robot_Speed / 2.0f;
@@ -351,13 +465,19 @@ void ReverseStart(robot_Event event, robot_Internal *internal, robot_Action *act
     internal->begin_reverse = event.elapsed_time;
 }
 
-void TargetCollisionStart(robot_Event event, robot_Internal *internal, robot_Action *action)
+static void
+TargetCollisionStart(robot_Event event,
+                     robot_Internal *internal,
+                     robot_Action *action)
 {
     action->left_wheel = 0.0f;
     action->right_wheel = 0.0f;
 }
 
-void TopTouchStart(robot_Event event, robot_Internal *internal, robot_Action *action)
+static void
+TopTouchStart(robot_Event event,
+              robot_Internal *internal,
+              robot_Action *action)
 {
     action->left_wheel = -Robot_Speed / 2.0f;
     action->right_wheel = Robot_Speed / 2.0f;
@@ -365,10 +485,11 @@ void TopTouchStart(robot_Event event, robot_Internal *internal, robot_Action *ac
     internal->begin_top_touch = event.elapsed_time;
 }
 
-robot_State robot_fsm(robot_State state,
-                      robot_Internal *internal,
-                      robot_Event event,
-                      robot_Action *action)
+static robot_State
+robot_fsm(robot_State state,
+          robot_Internal *internal,
+          robot_Event event,
+          robot_Action *action)
 {
     action->was_bumped = 0;
     action->was_top_touched = 0;
@@ -535,51 +656,8 @@ robot_State robot_fsm(robot_State state,
     return state;
 }
 
-struct sim_Robot
-{
-    robot_State state;
-    robot_Internal internal;
-    robot_Action action;
-
-    float x;
-    float y;
-    sim_World_Angle q;
-
-    // Physical parameters
-    float L;  // distance between wheels (m)
-    float vl; // left-wheel speed (m/s)
-    float vr; // right-wheel speed (m/s)
-
-    float tangent_x;
-    float tangent_y;
-    float forward_x;
-    float forward_y;
-
-    bool removed;
-};
-
-struct sim_Drone
-{
-    float x;
-    float y;
-    float xr;
-    float yr;
-    float v_max;
-    sim_Command cmd;
-    bool cmd_done;
-
-    bool landing;
-    float land_timer;
-};
-
-struct sim_Internal
-{
-    sim_Time  elapsed_time;
-    sim_Drone drone;
-    sim_Robot robots[Num_Robots];
-};
-
-sim_World_Angle wrap_angle(sim_World_Angle angle)
+static sim_World_Angle
+wrap_angle(sim_World_Angle angle)
 {
     while (angle > TWO_PI)
         angle -= TWO_PI;
@@ -588,7 +666,8 @@ sim_World_Angle wrap_angle(sim_World_Angle angle)
     return angle;
 }
 
-void robot_integrate(sim_Robot *robot, float dt)
+static void
+robot_integrate(sim_Robot *robot, float dt)
 {
     float v = 0.5f * (robot->vl + robot->vr);
     float w = (robot->vr - robot->vl) / (robot->L*0.5f);
@@ -605,21 +684,15 @@ void robot_integrate(sim_Robot *robot, float dt)
     robot->tangent_y = cos(robot->q);
 }
 
-float vector_length(float dx, float dy)
+static float
+vector_length(float dx, float dy)
 {
     return sqrt(dx*dx + dy*dy);
 }
 
-// Global variables
-static sim_Internal INTERNAL;
-static sim_Robot *ROBOTS;
-static sim_Robot *OBSTACLES;
-static sim_Robot *TARGETS;
-static sim_Drone *DRONE;
-
-int sim_init(int seed, sim_State *init_state)
+u32 sim_init(u32 seed, sim_State *init_state)
 {
-    int used_seed;
+    u32 used_seed;
     if (seed > 0)
     {
         used_seed = seed;
@@ -627,9 +700,9 @@ int sim_init(int seed, sim_State *init_state)
     else
     {
         // Absolutely terrible
-        used_seed = (int)time(0);
+        used_seed = (u32)time(0);
     }
-    srand(used_seed);
+    seed_xor128(used_seed);
     ROBOTS = INTERNAL.robots;
     TARGETS = INTERNAL.robots;
     OBSTACLES = INTERNAL.robots + Num_Targets;
@@ -702,6 +775,7 @@ int sim_init(int seed, sim_State *init_state)
 sim_State sim_tick(sim_Command cmd)
 {
     INTERNAL.elapsed_time += Sim_Timestep;
+    printf("%.2f\n", INTERNAL.elapsed_time);
 
     robot_Event events[Num_Robots] = {0};
     for (u32 i = 0; i < Num_Robots; i++)
