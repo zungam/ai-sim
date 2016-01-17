@@ -1,8 +1,4 @@
 /* TODO:
-- Integrate ImGUI: https://github.com/ocornut/imgui
-- Implement rewind/seeking: Need to change sim API to
-  expose internal state.
-
 - Synchronize sim_timestep with speed of application
 */
 
@@ -17,6 +13,14 @@
 #include "SDL_assert.h"
 #include <stdlib.h>
 
+#include "lib/imgui/imgui_draw.cpp"
+#include "lib/imgui/imgui.cpp"
+#include "lib/imgui/imgui_demo.cpp"
+#include "lib/imgui/imgui_impl_sdl.cpp"
+
+// Allocate thirty minutes worth of real time history
+#define History_Max_Length ((int)(30.0f * 60.0f / Sim_Timestep))
+
 #define Assert SDL_assert
 #define Printf SDL_Log
 
@@ -25,15 +29,10 @@ struct Color
     float r, g, b, a;
 };
 
-struct HistoryEntry
-{
-    sim_Command cmd;
-    HistoryEntry *prev;
-    HistoryEntry *next;
-};
-
 struct VideoMode
 {
+    SDL_Window *window;
+
     int width;
     int height;
     int gl_major;
@@ -59,8 +58,8 @@ struct VideoMode
 VideoMode default_video_mode()
 {
     VideoMode mode = {};
-    mode.width = 500;
-    mode.height = 500;
+    mode.width = 800;
+    mode.height = 600;
     mode.gl_major = 1;
     mode.gl_minor = 5;
     mode.double_buffer = 1;
@@ -106,33 +105,20 @@ r32 time_since(u64 then)
 
 global r32 ndc_scale_x;
 global r32 ndc_scale_y;
-struct History
+
+global sim_State STATE;
+global sim_State HISTORY_STATE[History_Max_Length];
+global sim_Command HISTORY_CMD[History_Max_Length];
+global int HISTORY_LENGTH;
+
+void add_history(sim_Command cmd, sim_State state)
 {
-
-    HistoryEntry *first;
-    HistoryEntry *last;
-    s32 count;
-};
-
-global History history;
-
-void history_Add(sim_Command cmd)
-{
-    HistoryEntry *entry = new HistoryEntry;
-    if (!history.first)
+    if (HISTORY_LENGTH < History_Max_Length)
     {
-        entry->prev = 0;
-        entry->next = 0;
-        history.first = entry;
-        history.last = entry;
+        HISTORY_CMD[HISTORY_LENGTH] = cmd;
+        HISTORY_STATE[HISTORY_LENGTH] = state;
+        HISTORY_LENGTH++;
     }
-    else
-    {
-        history.last->next = entry;
-        entry->prev = history.last;
-        entry->next = 0;
-    }
-    history.count++;
 }
 
 void world_to_ndc(r32 x_world, r32 y_world,
@@ -222,29 +208,132 @@ void draw_robot(sim_Robot robot)
     draw_line(x, y, x + l*cos(q), y + l*sin(q));
 }
 
+struct FileData
+{
+    int length;
+    u32 seed;
+    sim_Command cmds[History_Max_Length];
+};
+
+bool write_history(char *filename)
+{
+    FILE *f = fopen(filename, "wb");
+    if (!f)
+        return false;
+    static FileData data;
+    data.seed = STATE.seed;
+    data.length = HISTORY_LENGTH;
+    for (int i = 0; i < HISTORY_LENGTH; i++)
+        data.cmds[i] = HISTORY_CMD[i];
+    fwrite((char*)&data, 1, sizeof(data), f);
+    fclose(f);
+    return true;
+}
+
+bool read_history(char *filename)
+{
+    FILE *f = fopen(filename, "rb");
+    if (!f)
+    {
+        Printf("Failed to open file\n");
+        return false;
+    }
+    static FileData data;
+    fread((char*)&data, sizeof(data), 1, f);
+    HISTORY_LENGTH = data.length;
+    STATE = sim_init(data.seed);
+    for (int i = 0; i < HISTORY_LENGTH; i++)
+    {
+        HISTORY_CMD[i] = data.cmds[i];
+        STATE = sim_tick(STATE, HISTORY_CMD[i]);
+        HISTORY_STATE[i] = STATE;
+    }
+    fclose(f);
+    Printf("Loaded %s\n", filename);
+    return true;
+}
+
 void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
 {
+    #if 0
+    persist bool show_test_window = true;
+    persist bool show_another_window = false;
+    persist ImVec4 clear_color = ImColor(114, 144, 154);
+    ImGui_ImplSdl_NewFrame(mode.window);
+
+    // 1. Show a simple window
+    // Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets appears in a window automatically called "Debug"
+    {
+        static float f = 0.0f;
+        ImGui::Text("Hello, world!");
+        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
+        ImGui::ColorEdit3("clear color", (float*)&clear_color);
+        if (ImGui::Button("Test Window")) show_test_window ^= 1;
+        if (ImGui::Button("Another Window")) show_another_window ^= 1;
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+    }
+
+    // 2. Show another simple window, this time using an explicit Begin/End pair
+    if (show_another_window)
+    {
+        ImGui::SetNextWindowSize(ImVec2(200,100), ImGuiSetCond_FirstUseEver);
+        ImGui::Begin("Another Window", &show_another_window);
+        ImGui::Text("Hello");
+        ImGui::End();
+    }
+
+    // 3. Show the ImGui test window. Most of the sample code is in ImGui::ShowTestWindow()
+    if (show_test_window)
+    {
+        ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiSetCond_FirstUseEver);
+        ImGui::ShowTestWindow(&show_test_window);
+    }
+
+    // Rendering
+    glViewport(0, 0, (int)ImGui::GetIO().DisplaySize.x, (int)ImGui::GetIO().DisplaySize.y);
+    glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
+    glClear(GL_COLOR_BUFFER_BIT);
+    ImGui::Render();
+    #else
     persist bool flag_DrawDroneGoto     = true;
     persist bool flag_DrawDrone         = true;
     persist bool flag_DrawVisibleRegion = true;
     persist bool flag_DrawTargets       = true;
     persist bool flag_DrawObstacles     = true;
+    persist bool flag_Paused            = false;
 
-    persist Color color_Clear         = { 0.00f, 0.00f, 0.00f, 1.00f };
-    persist Color color_Grid          = { 0.87f, 0.93f, 0.84f, 0.20f };
-    persist Color color_VisibleRegion = { 0.87f, 0.93f, 0.84f, 0.50f };
-    persist Color color_GreenLine     = { 0.43f, 0.67f, 0.17f, 1.00f };
-    persist Color color_Targets       = { 0.85f, 0.83f, 0.37f, 1.00f };
-    persist Color color_Obstacles     = { 0.43f, 0.76f, 0.79f, 1.00f };
-    persist Color color_Drone         = { 0.87f, 0.93f, 0.84f, 0.50f };
-    persist Color color_DroneGoto     = { 0.87f, 0.93f, 0.84f, 0.50f };
+    persist int seek_cursor = 0;
+    persist int selected_target = -1;
+
+    persist Color color_Clear          = { 0.00f, 0.00f, 0.00f, 1.00f };
+    persist Color color_Grid           = { 0.87f, 0.93f, 0.84f, 0.20f };
+    persist Color color_VisibleRegion  = { 0.87f, 0.93f, 0.84f, 0.50f };
+    persist Color color_GreenLine      = { 0.43f, 0.67f, 0.17f, 1.00f };
+    persist Color color_SelectedTarget = { 0.85f, 0.34f, 0.32f, 1.00f };
+    persist Color color_Targets        = { 0.85f, 0.83f, 0.37f, 1.00f };
+    persist Color color_Obstacles      = { 0.43f, 0.76f, 0.79f, 1.00f };
+    persist Color color_Drone          = { 0.87f, 0.93f, 0.84f, 0.50f };
+    persist Color color_DroneGoto      = { 0.87f, 0.93f, 0.84f, 0.50f };
 
     ndc_scale_x = (mode.height / (r32)mode.width) / 12.0f;
     ndc_scale_y = 1.0f / 12.0f;
     sim_Command cmd;
     cmd.type = sim_CommandType_LandInFrontOf;
+    cmd.x = 0.0f;
+    cmd.y = 0.0f;
     cmd.i = 0;
-    sim_State state = sim_tick(cmd);
+
+    if (!flag_Paused)
+    {
+        STATE = sim_tick(STATE, cmd);
+        add_history(cmd, STATE);
+    }
+
+    sim_State draw_state = HISTORY_STATE[seek_cursor];
+    sim_Drone drone = draw_state.drone;
+    sim_Robot *robots = draw_state.robots;
+    sim_Robot *targets = draw_state.robots;
+    sim_Robot *obstacles = draw_state.robots + Num_Targets;
 
     glViewport(0, 0, mode.width, mode.height);
     glClearColor(color_Clear.r,
@@ -260,7 +349,7 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     {
         // draw grid
         color4f(color_Grid);
-        for (u32 i = 0; i <= 20; i++)
+        for (int i = 0; i <= 20; i++)
         {
             float x = (float)i;
             draw_line(x, 0.0f, x, 20.0f);
@@ -271,7 +360,7 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         if (flag_DrawVisibleRegion)
         {
             color4f(color_VisibleRegion);
-            draw_circle(DRONE->x, DRONE->y, 2.5f);
+            draw_circle(drone.x, drone.y, 2.5f);
         }
 
         // draw green line
@@ -282,46 +371,51 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         if (flag_DrawTargets)
         {
             color4f(color_Targets);
-            for (u32 i = 0; i < Num_Targets; i++)
-                draw_robot(TARGETS[i]);
+            for (int i = 0; i < Num_Targets; i++)
+                draw_robot(targets[i]);
+            if (selected_target >= 0)
+            {
+                color4f(color_SelectedTarget);
+                draw_robot(targets[selected_target]);
+            }
         }
 
         // draw obstacles
         if (flag_DrawObstacles)
         {
             color4f(color_Obstacles);
-            for (u32 i = 0; i < Num_Obstacles; i++)
-                draw_robot(OBSTACLES[i]);
+            for (int i = 0; i < Num_Obstacles; i++)
+                draw_robot(obstacles[i]);
         }
 
         // draw drone
         if (flag_DrawDrone)
         {
             color4f(color_Drone);
-            draw_line(DRONE->x - 0.5f, DRONE->y,
-                      DRONE->x + 0.5f, DRONE->y);
-            draw_line(DRONE->x, DRONE->y - 0.5f,
-                      DRONE->x, DRONE->y + 0.5f);
+            draw_line(drone.x - 0.5f, drone.y,
+                      drone.x + 0.5f, drone.y);
+            draw_line(drone.x, drone.y - 0.5f,
+                      drone.x, drone.y + 0.5f);
         }
 
         // draw drone goto
         if (flag_DrawDroneGoto)
         {
             color4f(color_DroneGoto);
-            draw_circle(DRONE->xr, DRONE->yr, 0.45f);
+            draw_circle(drone.xr, drone.yr, 0.45f);
         }
 
         // draw indicators of magnet or bumper activations
-        for (u32 i = 0; i < Num_Targets; i++)
+        for (int i = 0; i < Num_Targets; i++)
         {
-            float x = TARGETS[i].x;
-            float y = TARGETS[i].y;
-            if (TARGETS[i].action.was_bumped)
+            float x = targets[i].x;
+            float y = targets[i].y;
+            if (targets[i].action.was_bumped)
             {
                 glColor4f(1.0f, 0.3f, 0.1f, 1.0f);
                 draw_circle(x, y, 0.5f);
             }
-            else if (TARGETS[i].action.was_top_touched)
+            else if (targets[i].action.was_top_touched)
             {
                 glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
                 draw_circle(x, y, 0.5f);
@@ -329,6 +423,179 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         }
     }
     glEnd();
+
+    ImGui_ImplSdl_NewFrame(mode.window);
+
+    if (ImGui::CollapsingHeader("Rendering"))
+    {
+        ImGui::Checkbox("Drone goto", &flag_DrawDroneGoto);
+        ImGui::Checkbox("Drone", &flag_DrawDrone);
+        ImGui::Checkbox("Visible region", &flag_DrawVisibleRegion);
+        ImGui::Checkbox("Targets", &flag_DrawTargets);
+        ImGui::Checkbox("Obstacles", &flag_DrawObstacles);
+    }
+
+    if (ImGui::CollapsingHeader("Colors"))
+    {
+        ImGui::ColorEdit4("Clear", &color_Clear.r);
+        ImGui::ColorEdit4("Grid", &color_Grid.r);
+        ImGui::ColorEdit4("VisibleRegion", &color_VisibleRegion.r);
+        ImGui::ColorEdit4("GreenLine", &color_GreenLine.r);
+        ImGui::ColorEdit4("Targets", &color_Targets.r);
+        ImGui::ColorEdit4("Obstacles", &color_Obstacles.r);
+        ImGui::ColorEdit4("Drone", &color_Drone.r);
+        ImGui::ColorEdit4("DroneGoto", &color_DroneGoto.r);
+    }
+
+    if (ImGui::CollapsingHeader("Seek"))
+    {
+        ImGui::Checkbox("Paused", &flag_Paused);
+        ImGui::SliderInt("Seek", &seek_cursor, 0, HISTORY_LENGTH-1);
+        ImGui::InputInt("Seek frame", &seek_cursor);
+        if (seek_cursor < 0) seek_cursor = 0;
+        if (seek_cursor > HISTORY_LENGTH-1) seek_cursor = HISTORY_LENGTH-1;
+        ImGui::Text("Time: %.2f seconds", (seek_cursor+1) * Sim_Timestep);
+    }
+
+    if (!flag_Paused)
+        seek_cursor = HISTORY_LENGTH-1;
+
+    if (ImGui::CollapsingHeader("Drone"))
+    {
+        ImGui::Text("Command Type:");
+        ImGui::SameLine();
+        switch (drone.cmd.type)
+        {
+            case sim_CommandType_NoCommand:
+            {
+                ImGui::Text("NoCommand");
+            } break;
+            case sim_CommandType_LandOnTopOf:
+            {
+                ImGui::Text("LandOnTopOf");
+            } break;
+            case sim_CommandType_LandInFrontOf:
+            {
+                ImGui::Text("LandInFrontOf");
+            } break;
+            case sim_CommandType_Track:
+            {
+                ImGui::Text("Track");
+            } break;
+            case sim_CommandType_Search:
+            {
+                ImGui::Text("Search");
+            } break;
+        }
+        ImGui::Text("x: %.2f", drone.cmd.x);
+        ImGui::Text("y: %.2f", drone.cmd.y);
+        ImGui::Text("i: %d", drone.cmd.i);
+        ImGui::Separator();
+    }
+
+    if (ImGui::CollapsingHeader("Robots"))
+    {
+        ImGui::Columns(4, "mycolumns");
+        ImGui::Separator();
+        ImGui::Text("ID"); ImGui::NextColumn();
+        ImGui::Text("X"); ImGui::NextColumn();
+        ImGui::Text("Y"); ImGui::NextColumn();
+        ImGui::Text("Angle"); ImGui::NextColumn();
+        ImGui::Separator();
+        for (int i = 0; i < Num_Targets; i++)
+        {
+            char label[32];
+            sprintf(label, "%02d", i);
+            if (ImGui::Selectable(label, selected_target == i, ImGuiSelectableFlags_SpanAllColumns))
+                selected_target = i;
+            ImGui::NextColumn();
+            ImGui::Text("%.2f", robots[i].x); ImGui::NextColumn();
+            ImGui::Text("%.2f", robots[i].y); ImGui::NextColumn();
+            ImGui::Text("%.2f", robots[i].q); ImGui::NextColumn();
+        }
+        ImGui::Columns(1);
+        ImGui::Separator();
+    }
+    else
+    {
+        selected_target = -1;
+    }
+
+    persist int custom_seed = 0;
+    if (ImGui::Button("Reset"))
+    {
+        if (custom_seed > 0)
+            STATE = sim_init((u32)custom_seed);
+        else
+            STATE = sim_init((u32)get_tick());
+        HISTORY_LENGTH = 0;
+        sim_Command cmd;
+        cmd.type = sim_CommandType_NoCommand;
+        add_history(cmd, STATE);
+    }
+    ImGui::SameLine();
+    ImGui::InputInt("Seed", &custom_seed);
+
+    if (ImGui::Button("Save.."))
+        ImGui::OpenPopup("Save as?");
+    if (ImGui::BeginPopupModal("Save as?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        persist char filename[1024];
+        persist bool init_filename = true;
+        if (init_filename)
+        {
+            sprintf(filename, "simulation%u", STATE.seed);
+            init_filename = false;
+        }
+        ImGui::InputText("Filename", filename, sizeof(filename));
+        ImGui::Separator();
+
+        if (ImGui::Button("OK", ImVec2(120,0)))
+        {
+            write_history(filename);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120,0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Load.."))
+        ImGui::OpenPopup("Load file?");
+    if (ImGui::BeginPopupModal("Load file?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        persist char filename[1024];
+        persist bool init_filename = true;
+        if (init_filename)
+        {
+            sprintf(filename, "simulation%u", STATE.seed);
+            init_filename = false;
+        }
+        ImGui::InputText("Filename", filename, sizeof(filename));
+        ImGui::Separator();
+
+        if (ImGui::Button("OK", ImVec2(120,0)))
+        {
+            read_history(filename);
+            seek_cursor = HISTORY_LENGTH-1;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120,0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::Render();
+
+    #endif
 }
 
 int main(int argc, char *argv[])
@@ -349,20 +616,20 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS,    mode.multisamples > 0 ? 1 : 0);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES,    mode.multisamples);
 
-    SDL_Window *window = SDL_CreateWindow(
+    mode.window = SDL_CreateWindow(
         "World Simulator",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
         mode.width, mode.height,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 
-    if (!window)
+    if (!mode.window)
     {
         Printf("Failed to create a window: %s\n", SDL_GetError());
         return -1;
     }
 
-    SDL_GLContext context = SDL_GL_CreateContext(window);
+    SDL_GLContext context = SDL_GL_CreateContext(mode.window);
 
     // Note: This must be set on a valid context
     SDL_GL_SetSwapInterval(mode.swap_interval);
@@ -379,7 +646,10 @@ int main(int argc, char *argv[])
     gui_init_msgs(true);
     #endif
 
-    sim_init((u32)get_tick(), 0);
+    ImGui_ImplSdl_Init(mode.window);
+
+    STATE = sim_init((u32)get_tick());
+    HISTORY_LENGTH = 0;
 
     bool running = true;
     u64 initial_tick = get_tick();
@@ -391,6 +661,7 @@ int main(int argc, char *argv[])
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
+            ImGui_ImplSdl_ProcessEvent(&event);
             switch (event.type)
             {
                 case SDL_WINDOWEVENT:
@@ -409,16 +680,6 @@ int main(int argc, char *argv[])
                     }
                 } break;
 
-                case SDL_KEYDOWN:
-                {
-                    if (event.key.keysym.sym == SDLK_ESCAPE)
-                        running = false;
-                    if (event.key.keysym.sym == SDLK_r)
-                    {
-                        sim_init((int)get_tick(), 0);
-                    }
-                } break;
-
                 case SDL_QUIT:
                 {
                     running = false;
@@ -426,7 +687,7 @@ int main(int argc, char *argv[])
             }
         }
         gui_tick(mode, elapsed_time, delta_time);
-        SDL_GL_SwapWindow(window);
+        SDL_GL_SwapWindow(mode.window);
 
         delta_time = time_since(last_frame_t);
         if (mode.fps_lock > 0)
@@ -448,8 +709,9 @@ int main(int argc, char *argv[])
         }
     }
 
+    ImGui_ImplSdl_Shutdown();
     SDL_GL_DeleteContext(context);
-    SDL_DestroyWindow(window);
+    SDL_DestroyWindow(mode.window);
     SDL_Quit();
     return 0;
 }

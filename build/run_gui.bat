@@ -4,4 +4,4 @@ set LF=-subsystem:console -incremental:no -debug SDL2.lib SDL2main.lib opengl32.
 
 cl %CF% -I../lib/sdl/include ../gui.cpp /link %LF% -out:gui.exe
 
-start gui.exe
+gui.exe

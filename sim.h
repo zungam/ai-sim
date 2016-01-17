@@ -76,7 +76,7 @@ typedef int8_t      s08;
 #define Sim_Target_Init_Radius (1.0f)
 #define Sim_Obstacle_Init_Radius (5.0f)
 
-struct sim_State
+struct sim_Observed_State
 {
     float elapsed_time;
     bool  target_in_view[Num_Targets];
@@ -108,44 +108,6 @@ struct sim_Command
     float y;
     int i;
 };
-
-void sim_init(u32 seed, sim_State *init_state);
-// seed
-//     Will be used to seed the random number generator that affects
-//     perturbations in the targets' movement. Two program with the
-//     same seed that call sim_tick the same number of times with
-//     the same inputs should give the same sim_State outputs.
-// init_state
-//     Pass 0 if you would like to use the default state as defined by
-//     the IARC rules.
-
-sim_State sim_tick(sim_Command cmd);
-// Advances the world state forward Sim_Timestep seconds.
-// Remarks
-//     Increasing Sim_Timestep will decrease the accuracy of the simulation,
-//     and may cause weird bugs like missed collisions. If you would like to
-//     simulate ahead a given number of seconds, I would suggest to keep the
-//     timestep low and run it in a for loop for n=Interval/Sim_Timestep
-//     iterations.
-// Return
-//     A snapshot of the world state after simulating ahead one time step.
-
-#endif // SIM_HEADER_INCLUDE
-
-// ***********************************************************************
-//                        Implementation starts here
-// ***********************************************************************
-#include <math.h> // for abs, cos, sin
-#include <stdio.h>
-
-#ifdef SIM_IMPLEMENTATION
-#ifndef PI
-#define PI 3.14159265359f
-#endif
-
-#ifndef TWO_PI
-#define TWO_PI 6.28318530718f
-#endif
 
 typedef float sim_Time;
 
@@ -245,8 +207,6 @@ struct sim_Robot
     float vl; // left-wheel speed (m/s)
     float vr; // right-wheel speed (m/s)
 
-    float tangent_x;
-    float tangent_y;
     float forward_x;
     float forward_y;
 
@@ -267,9 +227,10 @@ struct sim_Drone
     float land_timer;
 };
 
-struct sim_Internal
+struct sim_State
 {
     // Random-number-generator state
+    u32 seed;
     u32 xor128_x;
     u32 xor128_y;
     u32 xor128_z;
@@ -280,29 +241,41 @@ struct sim_Internal
     sim_Robot robots[Num_Robots];
 };
 
+sim_State sim_init(u32 seed);
+
+// Advances the world state forward Sim_Timestep seconds,
+// Remarks
+//     Increasing Sim_Timestep will decrease the accuracy of the simulation,
+//     and may cause weird bugs like missed collisions. If you would like to
+//     simulate ahead a given number of seconds, I would suggest to keep the
+//     timestep low and run it in a for loop for n=Interval/Sim_Timestep
+//     iterations.
+// Return
+//     A snapshot of the world state after simulating ahead one time step.
+sim_State sim_tick(sim_State state, sim_Command cmd);
+
+#endif // SIM_HEADER_INCLUDE
+
+// ***********************************************************************
+//                        Implementation starts here
+// ***********************************************************************
+#include <math.h> // for abs, cos, sin
+
+#ifdef SIM_IMPLEMENTATION
+#ifndef PI
+#define PI 3.14159265359f
+#endif
+
+#ifndef TWO_PI
+#define TWO_PI 6.28318530718f
+#endif
+
 // Global variables
-static sim_Internal INTERNAL;
+static sim_State *INTERNAL;
 static sim_Robot *ROBOTS;
 static sim_Robot *OBSTACLES;
 static sim_Robot *TARGETS;
 static sim_Drone *DRONE;
-
-static void
-seed_xor128(u32 seed)
-{
-    // Pick out some pieces of the number
-    // TODO: Does this pattern generate bad sequences?
-    INTERNAL.xor128_x = seed & 0xaa121212;
-    INTERNAL.xor128_y = seed & 0x21aa2121;
-    INTERNAL.xor128_z = seed & 0x1212aa12;
-    INTERNAL.xor128_w = seed & 0x212a12aa;
-
-    // Seeds must be nonzero
-    if (INTERNAL.xor128_x == 0) INTERNAL.xor128_x++;
-    if (INTERNAL.xor128_y == 0) INTERNAL.xor128_y++;
-    if (INTERNAL.xor128_z == 0) INTERNAL.xor128_z++;
-    if (INTERNAL.xor128_w == 0) INTERNAL.xor128_w++;
-}
 
 // This algorithm has a maximal period of 2^128 − 1.
 // https://en.wikipedia.org/wiki/Xorshift
@@ -326,11 +299,11 @@ xor128(u32 *in_out_x,
 static u32
 _xor128()
 {
-    xor128(&INTERNAL.xor128_x,
-           &INTERNAL.xor128_y,
-           &INTERNAL.xor128_z,
-           &INTERNAL.xor128_w);
-    u32 result = INTERNAL.xor128_w;
+    xor128(&INTERNAL->xor128_x,
+           &INTERNAL->xor128_y,
+           &INTERNAL->xor128_z,
+           &INTERNAL->xor128_w);
+    u32 result = INTERNAL->xor128_w;
     return result;
 }
 
@@ -660,8 +633,6 @@ robot_integrate(sim_Robot *robot, float dt)
 
     robot->forward_x = cos(robot->q);
     robot->forward_y = sin(robot->q);
-    robot->tangent_x = -sin(robot->q);
-    robot->tangent_y = cos(robot->q);
 }
 
 static float
@@ -670,13 +641,33 @@ vector_length(float dx, float dy)
     return sqrt(dx*dx + dy*dy);
 }
 
-void sim_init(u32 seed, sim_State *init_state)
+sim_State sim_init(u32 seed)
 {
-    seed_xor128(seed);
-    ROBOTS = INTERNAL.robots;
-    TARGETS = INTERNAL.robots;
-    OBSTACLES = INTERNAL.robots + Num_Targets;
-    DRONE = &INTERNAL.drone;
+    sim_State result;
+    INTERNAL = &result;
+    DRONE = &INTERNAL->drone;
+    ROBOTS = INTERNAL->robots;
+    TARGETS = INTERNAL->robots;
+    OBSTACLES = INTERNAL->robots + Num_Targets;
+
+    INTERNAL->elapsed_time = 0.0f;
+
+    // Use the seed to set the initial state of the xorshift
+    {
+        // Pick out some pieces of the number
+        // TODO: Does this pattern generate bad sequences?
+        INTERNAL->seed = seed;
+        INTERNAL->xor128_x = seed & 0xaa121212;
+        INTERNAL->xor128_y = seed & 0x21aa2121;
+        INTERNAL->xor128_z = seed & 0x1212aa12;
+        INTERNAL->xor128_w = seed & 0x212a12aa;
+
+        // Seeds must be nonzero
+        if (INTERNAL->xor128_x == 0) INTERNAL->xor128_x++;
+        if (INTERNAL->xor128_y == 0) INTERNAL->xor128_y++;
+        if (INTERNAL->xor128_z == 0) INTERNAL->xor128_z++;
+        if (INTERNAL->xor128_w == 0) INTERNAL->xor128_w++;
+    }
 
     DRONE->x = 10.0f;
     DRONE->y = 10.0f;
@@ -738,12 +729,26 @@ void sim_init(u32 seed, sim_State *init_state)
 
         OBSTACLES[i] = robot;
     }
+
+    INTERNAL = 0;
+    DRONE = 0;
+    ROBOTS = 0;
+    TARGETS = 0;
+    OBSTACLES = 0;
+
+    return result;
 }
 
-sim_State sim_tick(sim_Command cmd)
+sim_State sim_tick(sim_State state, sim_Command cmd)
 {
-    INTERNAL.elapsed_time += Sim_Timestep;
-    printf("%.2f\n", INTERNAL.elapsed_time);
+    sim_State result = state;
+    INTERNAL = &result;
+    DRONE = &INTERNAL->drone;
+    ROBOTS = INTERNAL->robots;
+    TARGETS = INTERNAL->robots;
+    OBSTACLES = INTERNAL->robots + Num_Targets;
+
+    INTERNAL->elapsed_time += Sim_Timestep;
 
     robot_Event events[Num_Robots] = {0};
     for (u32 i = 0; i < Num_Robots; i++)
@@ -755,7 +760,7 @@ sim_State sim_tick(sim_Command cmd)
         events[i].is_top_touch = 0;
         events[i].is_bumper = 0;
         events[i].target_switch_pin = 0;
-        events[i].elapsed_time = INTERNAL.elapsed_time;
+        events[i].elapsed_time = INTERNAL->elapsed_time;
     }
 
     if (cmd.type != sim_CommandType_NoCommand)
@@ -1001,8 +1006,9 @@ sim_State sim_tick(sim_Command cmd)
         ROBOTS[i].vr = ROBOTS[i].action.right_wheel;
     }
 
-    sim_State result = {};
-    result.elapsed_time = INTERNAL.elapsed_time;
+    #if 0
+    sim_Observed_State result = {};
+    result.elapsed_time = INTERNAL->elapsed_time;
     for (u32 i = 0; i < Num_Targets; i++)
     {
         result.target_in_view[i] = false; // TODO:
@@ -1017,11 +1023,19 @@ sim_State sim_tick(sim_Command cmd)
         result.obstacle_y[i] = OBSTACLES[i].y;
         result.obstacle_q[i] = OBSTACLES[i].q;
     }
-    result.drone_x = INTERNAL.drone.x;
-    result.drone_y = INTERNAL.drone.y;
+    result.drone_x = INTERNAL->drone.x;
+    result.drone_y = INTERNAL->drone.y;
     result.drone_cmd_done = DRONE->cmd_done;
 
     return result;
+    #else
+    INTERNAL = 0;
+    DRONE = 0;
+    ROBOTS = 0;
+    TARGETS = 0;
+    OBSTACLES = 0;
+    return result;
+    #endif
 }
 
 #endif // SIM_IMPLEMENTATION
