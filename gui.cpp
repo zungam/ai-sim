@@ -325,8 +325,16 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
 
     if (!flag_Paused)
     {
-        STATE = sim_tick(STATE, cmd);
-        add_history(cmd, STATE);
+        if (seek_cursor < HISTORY_LENGTH-1)
+        {
+            seek_cursor++;
+        }
+        else
+        {
+            STATE = sim_tick(STATE, cmd);
+            add_history(cmd, STATE);
+            seek_cursor = HISTORY_LENGTH-1;
+        }
     }
 
     sim_State draw_state = HISTORY_STATE[seek_cursor];
@@ -457,9 +465,6 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         ImGui::Text("Time: %.2f seconds", (seek_cursor+1) * Sim_Timestep);
     }
 
-    if (!flag_Paused)
-        seek_cursor = HISTORY_LENGTH-1;
-
     if (ImGui::CollapsingHeader("Drone"))
     {
         ImGui::Text("Command Type:");
@@ -582,7 +587,8 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         if (ImGui::Button("OK", ImVec2(120,0)))
         {
             read_history(filename);
-            seek_cursor = HISTORY_LENGTH-1;
+            seek_cursor = 0;
+            flag_Paused = true;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
