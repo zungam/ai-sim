@@ -462,41 +462,6 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         ImGui::Text("Time: %.2f seconds", (seek_cursor+1) * Sim_Timestep);
     }
 
-    if (ImGui::CollapsingHeader("Drone"))
-    {
-        ImGui::Text("Command Type:");
-        ImGui::SameLine();
-        switch (drone.cmd.type)
-        {
-            case sim_CommandType_NoCommand:
-            {
-                ImGui::Text("NoCommand");
-            } break;
-            case sim_CommandType_LandOnTopOf:
-            {
-                ImGui::Text("LandOnTopOf");
-            } break;
-            case sim_CommandType_LandInFrontOf:
-            {
-                ImGui::Text("LandInFrontOf");
-            } break;
-            case sim_CommandType_Track:
-            {
-                ImGui::Text("Track");
-            } break;
-            case sim_CommandType_Search:
-            {
-                ImGui::Text("Search");
-            } break;
-        }
-        ImGui::Text("drone.x: %.2f", drone.x);
-        ImGui::Text("drone.y: %.2f", drone.y);
-        ImGui::Text("x: %.2f", drone.cmd.x);
-        ImGui::Text("y: %.2f", drone.cmd.y);
-        ImGui::Text("i: %d", drone.cmd.i);
-        ImGui::Separator();
-    }
-
     if (ImGui::CollapsingHeader("Robots"))
     {
         ImGui::Columns(4, "RobotsColumns");
@@ -553,14 +518,44 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
             sprintf(label, "%.2f", state_i.elapsed_time);
             ImGui::Selectable(label, false, ImGuiSelectableFlags_SpanAllColumns);
             ImGui::NextColumn();
-            if (cmd_i.type == sim_CommandType_LandInFrontOf) ImGui::Text("Land 180");
-            if (cmd_i.type == sim_CommandType_LandOnTopOf)   ImGui::Text("Land 45");
-            if (cmd_i.type == sim_CommandType_Track)         ImGui::Text("Track");
-            if (cmd_i.type == sim_CommandType_Search)        ImGui::Text("Search");
-            ImGui::NextColumn();
-            ImGui::Text("%.2f", cmd_i.x); ImGui::NextColumn();
-            ImGui::Text("%.2f", cmd_i.y); ImGui::NextColumn();
-            ImGui::Text("%d", cmd_i.i); ImGui::NextColumn();
+            switch (cmd_i.type)
+            {
+                case sim_CommandType_NoCommand:
+                {
+                    ImGui::Text("Nothing"); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                } break;
+                case sim_CommandType_LandInFrontOf:
+                {
+                    ImGui::Text("Land 180"); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                    ImGui::Text("%d", cmd_i.i); ImGui::NextColumn();
+                } break;
+                case sim_CommandType_LandOnTopOf:
+                {
+                    ImGui::Text("Land 45"); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                    ImGui::Text("%d", cmd_i.i); ImGui::NextColumn();
+                } break;
+                case sim_CommandType_Track:
+                {
+                    ImGui::Text("Track"); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                    ImGui::Text("%d", cmd_i.i); ImGui::NextColumn();
+                } break;
+                case sim_CommandType_Search:
+                {
+                    ImGui::Text("Search"); ImGui::NextColumn();
+                    ImGui::Text("%.2f", cmd_i.x); ImGui::NextColumn();
+                    ImGui::Text("%.2f", cmd_i.y); ImGui::NextColumn();
+                    ImGui::Text("-"); ImGui::NextColumn();
+                } break;
+            }
             count++;
         }
         ImGui::Columns(1);
