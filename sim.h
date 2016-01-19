@@ -33,12 +33,6 @@
 
 #ifndef SIM_HEADER_INCLUDE
 #define SIM_HEADER_INCLUDE
-#define Sim_Timestep (1.0f / 60.0f)
-#define Sim_Drone_View_Radius (2.5f)
-#define Num_Obstacles (4)
-#define Num_Targets (10)
-#define Num_Robots (Num_Obstacles + Num_Targets)
-
 #include <stdint.h>
 typedef float       r32;
 typedef uint64_t    u64;
@@ -48,6 +42,12 @@ typedef uint8_t     u08;
 typedef int32_t     s32;
 typedef int16_t     s16;
 typedef int8_t      s08;
+
+#define Sim_Timestep (1.0f / 60.0f)
+#define Sim_Drone_View_Radius (2.5f)
+#define Num_Obstacles (4)
+#define Num_Targets (10)
+#define Num_Robots (Num_Obstacles + Num_Targets)
 
 // How many meters the drone should be near to
 // a robot before it is considered to be above it.
@@ -94,9 +94,7 @@ struct sim_Command
     int i;
 };
 
-typedef float sim_Time;
-
-// The WORLD-SPACE COORDINATE SYSTEM is defined as follows:
+// The world-space coordinate system is defined as follows:
 // The red line is considered the x-axis, while the left
 // edge connecting the red and green line is considered the
 // y-axis. The z-axis is considered out of the screen, following
@@ -124,6 +122,9 @@ struct sim_World_Pos
 // positive counter-clockwise, wrapped to the
 // half-open interval [0, 2xPi).
 typedef float sim_World_Angle;
+
+// Number of seconds ticked since the sim was intialized
+typedef float sim_Time;
 
 enum robot_State
 {

@@ -1,5 +1,6 @@
 #define SIM_IMPLEMENTATION
 #include "sim.h"
+#include "gui.h"
 
 #define global static
 #define persist static
@@ -22,7 +23,7 @@
 
 struct Color
 {
-    float r, g, b, a;
+    r32 r, g, b, a;
 };
 
 struct VideoMode
@@ -50,21 +51,6 @@ struct VideoMode
     // at 0 when using this.
     int fps_lock;
 };
-
-VideoMode default_video_mode()
-{
-    VideoMode mode = {};
-    mode.width = 800;
-    mode.height = 600;
-    mode.gl_major = 1;
-    mode.gl_minor = 5;
-    mode.double_buffer = 1;
-    mode.depth_bits = 24;
-    mode.stencil_bits = 8;
-    mode.multisamples = 4;
-    mode.swap_interval = 1;
-    return mode;
-}
 
 const char *gl_error_message(GLenum error)
 {
@@ -260,10 +246,10 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     // 1. Show a simple window
     // Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets appears in a window automatically called "Debug"
     {
-        static float f = 0.0f;
+        static r32 f = 0.0f;
         ImGui::Text("Hello, world!");
-        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
-        ImGui::ColorEdit3("clear color", (float*)&clear_color);
+        ImGui::SliderFloat("r32", &f, 0.0f, 1.0f);
+        ImGui::ColorEdit3("clear color", (r32*)&clear_color);
         if (ImGui::Button("Test Window")) show_test_window ^= 1;
         if (ImGui::Button("Another Window")) show_another_window ^= 1;
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
@@ -311,13 +297,11 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     persist Color color_Drone          = { 0.87f, 0.93f, 0.84f, 0.50f };
     persist Color color_DroneGoto      = { 0.87f, 0.93f, 0.84f, 0.50f };
 
+    persist float send_timer = 0.0f;
+    persist float send_interval = 1.0f; // In simulation time units
+
     ndc_scale_x = (mode.height / (r32)mode.width) / 12.0f;
     ndc_scale_y = 1.0f / 12.0f;
-    sim_Command cmd;
-    cmd.type = sim_CommandType_LandInFrontOf;
-    cmd.x = 0.0f;
-    cmd.y = 0.0f;
-    cmd.i = 0;
 
     if (!flag_Paused)
     {
@@ -327,9 +311,26 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         }
         else
         {
+            sim_Command cmd;
+
+            if (!sim_recv_cmd(&cmd))
+            {
+                cmd.type = sim_CommandType_NoCommand;
+                cmd.x = 0.0f;
+                cmd.y = 0.0f;
+                cmd.i = 0;
+            }
+
             STATE = sim_tick(STATE, cmd);
             add_history(cmd, STATE);
             seek_cursor = HISTORY_LENGTH-1;
+
+            send_timer -= Sim_Timestep;
+            if (send_timer <= 0.0f)
+            {
+                sim_send_state(&STATE);
+                send_timer += send_interval;
+            }
         }
     }
 
@@ -355,7 +356,7 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         color4f(color_Grid);
         for (int i = 0; i <= 20; i++)
         {
-            float x = (float)i;
+            r32 x = (r32)i;
             draw_line(x, 0.0f, x, 20.0f);
             draw_line(0.0f, x, 20.0f, x);
         }
@@ -412,8 +413,8 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         // draw indicators of magnet or bumper activations
         for (int i = 0; i < Num_Targets; i++)
         {
-            float x = targets[i].x;
-            float y = targets[i].y;
+            r32 x = targets[i].x;
+            r32 y = targets[i].y;
             if (targets[i].action.was_bumped)
             {
                 glColor4f(1.0f, 0.3f, 0.1f, 1.0f);
@@ -522,6 +523,11 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         selected_target = -1;
     }
 
+    if (ImGui::CollapsingHeader("Communication"))
+    {
+        ImGui::SliderFloat("Send interval", &send_interval, Sim_Timestep, 1.0f);
+    }
+
     persist int custom_seed = 0;
     if (ImGui::Button("Reset"))
     {
@@ -608,7 +614,16 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    VideoMode mode = default_video_mode();
+    VideoMode mode = {};
+    mode.width = 800;
+    mode.height = 600;
+    mode.gl_major = 1;
+    mode.gl_minor = 5;
+    mode.double_buffer = 1;
+    mode.depth_bits = 24;
+    mode.stencil_bits = 8;
+    mode.multisamples = 4;
+    mode.swap_interval = 1;
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, mode.gl_major);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, mode.gl_minor);
@@ -644,9 +659,7 @@ int main(int argc, char *argv[])
     SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES,    &mode.multisamples);
     mode.swap_interval = SDL_GL_GetSwapInterval();
 
-    #if 0
-    gui_init_msgs(true);
-    #endif
+    sim_init_msgs(true);
 
     ImGui_ImplSdl_Init(mode.window);
 
