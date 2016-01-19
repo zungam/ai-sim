@@ -13,11 +13,11 @@ Running the real-time simulator
 -------------------------------
 Linux
     $ cd build
-    $ g++ ../gui.cpp -o simgui -lGL `sdl2-config --cflags --libs`
+    $ g++ ../gui.cpp -o sim -lGL `sdl2-config --cflags --libs`
 
 OSX
     $ cd build
-    $ g++ ../gui.cpp -o simgui -framework OpenGL `sdl2-config --cflags --libs`
+    $ g++ ../gui.cpp -o sim -framework OpenGL `sdl2-config --cflags --libs`
 
 Windows
     > cd build

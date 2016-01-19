@@ -77,22 +77,6 @@ typedef int8_t      s08;
 #define Sim_Target_Init_Radius (1.0f)
 #define Sim_Obstacle_Init_Radius (5.0f)
 
-struct sim_Observed_State
-{
-    float elapsed_time;
-    bool  target_in_view[Num_Targets];
-    float target_x[Num_Targets];
-    float target_y[Num_Targets];
-    float target_q[Num_Targets];
-    bool  target_removed[Num_Targets];
-    float obstacle_x[Num_Obstacles];
-    float obstacle_y[Num_Obstacles];
-    float obstacle_q[Num_Obstacles];
-    float drone_x;
-    float drone_y;
-    bool  drone_cmd_done;
-};
-
 enum sim_CommandType
 {
     sim_CommandType_NoCommand = 0,   // continue doing whatever you are doing
@@ -218,8 +202,12 @@ struct sim_Drone
 {
     float x;
     float y;
+    float z;
     float xr;
     float yr;
+    // TODO: float zr; // Should decrease when landing, following?
+    // TODO: When testing robustness, lower this when following,
+    // Test for electromagnet tapping
     float v_max;
     sim_Command cmd;
     bool cmd_done;
@@ -242,7 +230,31 @@ struct sim_State
     sim_Robot robots[Num_Robots];
 };
 
-sim_State sim_init(u32 seed);
+#define SIM_OBSERVE_LEVEL 1
+struct sim_Observed_State
+{
+#if SIM_OBSERVE_LEVEL==1
+    float elapsed_time;
+    float drone_x;
+    float drone_y;
+    bool  drone_cmd_done;
+
+    bool  target_in_view[Num_Targets];
+    bool  target_reversing[Num_Targets];
+    bool  target_removed[Num_Targets];
+    float target_x[Num_Targets];
+    float target_y[Num_Targets];
+    float target_q[Num_Targets];
+
+    float obstacle_x[Num_Obstacles];
+    float obstacle_y[Num_Obstacles];
+    float obstacle_q[Num_Obstacles];
+#else
+    float drone_x;
+    float drone_y;
+    // No elapsed time: Cannot measure that!
+#endif
+};
 
 // Advances the world state forward Sim_Timestep seconds,
 // Remarks
@@ -255,6 +267,16 @@ sim_State sim_init(u32 seed);
 //     A snapshot of the world state after simulating ahead one time step.
 sim_State sim_tick(sim_State state, sim_Command cmd);
 
+// Returns a default state with the robots configured according to the IARC
+// rules, and with a specified seed for the random number generator.
+sim_State sim_init(u32 seed);
+
+// Returns the observable state from a full state description
+sim_Observed_State sim_observe_state(sim_State);
+
+// TODO: Returns a full state description that best matches the
+// given observed state
+// sim_State sim_state_from_observed(sim_Observed_State);
 #endif // SIM_HEADER_INCLUDE
 
 // ***********************************************************************
@@ -642,6 +664,19 @@ vector_length(float dx, float dy)
     return sqrt(dx*dx + dy*dy);
 }
 
+static float
+compute_drone_visibility(float height_above_ground)
+{
+    // Interpolates between 0.5 meters and
+    // 3 meters view radius when height goes
+    // from 0 to 2.5 meters.
+    float h0 = 0.0f;
+    float h1 = 3.0f;
+    float alpha = (height_above_ground - h0) / (h1 - h0);
+    float view_radius = 0.5f + 2.0f * alpha;
+    return view_radius;
+}
+
 sim_State sim_init(u32 seed)
 {
     sim_State result;
@@ -672,6 +707,7 @@ sim_State sim_init(u32 seed)
 
     DRONE->x = 10.0f;
     DRONE->y = 10.0f;
+    DRONE->z = 3.0f;
     DRONE->xr = 10.0f;
     DRONE->yr = 10.0f;
     DRONE->v_max = 1.0f;
@@ -1007,36 +1043,42 @@ sim_State sim_tick(sim_State state, sim_Command cmd)
         ROBOTS[i].vr = ROBOTS[i].action.right_wheel;
     }
 
-    #if 0
-    sim_Observed_State result = {};
-    result.elapsed_time = INTERNAL->elapsed_time;
-    for (u32 i = 0; i < Num_Targets; i++)
-    {
-        result.target_in_view[i] = false; // TODO:
-        result.target_x[i] = TARGETS[i].x;
-        result.target_y[i] = TARGETS[i].y;
-        result.target_q[i] = TARGETS[i].q;
-        result.target_removed[i] = TARGETS[i].removed;
-    }
-    for (u32 i = 0; i < Num_Obstacles; i++)
-    {
-        result.obstacle_x[i] = OBSTACLES[i].x;
-        result.obstacle_y[i] = OBSTACLES[i].y;
-        result.obstacle_q[i] = OBSTACLES[i].q;
-    }
-    result.drone_x = INTERNAL->drone.x;
-    result.drone_y = INTERNAL->drone.y;
-    result.drone_cmd_done = DRONE->cmd_done;
-
-    return result;
-    #else
     INTERNAL = 0;
     DRONE = 0;
     ROBOTS = 0;
     TARGETS = 0;
     OBSTACLES = 0;
     return result;
+}
+
+sim_Observed_State sim_observe_state(sim_State state)
+{
+    sim_Observed_State result = {};
+    #if SIM_OBSERVE_LEVEL==1
+    result.elapsed_time = state.elapsed_time;
+    result.drone_x = state.drone.x;
+    result.drone_y = state.drone.y;
+    result.drone_cmd_done = state.drone.cmd_done;
+    sim_Robot *targets = state.robots;
+    sim_Robot *obstacles = state.robots + Num_Targets;
+    for (u32 i = 0; i < Num_Targets; i++)
+    {
+        result.target_in_view[i] = false;
+        result.target_reversing[i] = false;
+        result.target_removed[i] = targets[i].removed;
+        result.target_x[i] = targets[i].x;
+        result.target_y[i] = targets[i].y;
+        result.target_q[i] = targets[i].q;
+    }
+    for (u32 i = 0; i < Num_Obstacles; i++)
+    {
+        result.obstacle_x[i] = obstacles[i].x;
+        result.obstacle_y[i] = obstacles[i].y;
+        result.obstacle_q[i] = obstacles[i].q;
+    }
     #endif
+
+    return result;
 }
 
 #endif // SIM_IMPLEMENTATION
