@@ -497,7 +497,7 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
 
     if (ImGui::CollapsingHeader("Robots"))
     {
-        ImGui::Columns(4, "mycolumns");
+        ImGui::Columns(4, "RobotsColumns");
         ImGui::Separator();
         ImGui::Text("ID"); ImGui::NextColumn();
         ImGui::Text("X"); ImGui::NextColumn();
@@ -525,7 +525,43 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
 
     if (ImGui::CollapsingHeader("Communication"))
     {
+        ImGui::TextWrapped("The rate at which the state is sent can be changed using this slider."
+                           "The slider value represents the time interval (in simulation time) "
+                           "between each send.");
         ImGui::SliderFloat("Send interval", &send_interval, Sim_Timestep, 1.0f);
+        ImGui::Separator();
+
+        ImGui::Text("Last 10 non-trivial commands recieved:");
+        ImGui::Columns(5, "CommunicationColumns");
+        ImGui::Separator();
+        ImGui::Text("Time"); ImGui::NextColumn();
+        ImGui::Text("type"); ImGui::NextColumn();
+        ImGui::Text("x"); ImGui::NextColumn();
+        ImGui::Text("y"); ImGui::NextColumn();
+        ImGui::Text("i"); ImGui::NextColumn();
+        ImGui::Separator();
+        int count = 0;
+        for (int i = 0; count < 10 && i < HISTORY_LENGTH; i++)
+        {
+            sim_State state_i = HISTORY_STATE[HISTORY_LENGTH-1-i];
+            sim_Command cmd_i = HISTORY_CMD[HISTORY_LENGTH-1-i];
+            if (cmd_i.type == sim_CommandType_NoCommand)
+                continue;
+            char label[32];
+            sprintf(label, "%.2f", state_i.elapsed_time);
+            ImGui::Selectable(label, false, ImGuiSelectableFlags_SpanAllColumns);
+            ImGui::NextColumn();
+            if (cmd_i.type == sim_CommandType_LandInFrontOf) ImGui::Text("Land 180");
+            if (cmd_i.type == sim_CommandType_LandOnTopOf)   ImGui::Text("Land 45");
+            if (cmd_i.type == sim_CommandType_Track)         ImGui::Text("Track");
+            ImGui::NextColumn();
+            ImGui::Text("%.2f", cmd_i.x); ImGui::NextColumn();
+            ImGui::Text("%.2f", cmd_i.y); ImGui::NextColumn();
+            ImGui::Text("%d", cmd_i.i); ImGui::NextColumn();
+            count++;
+        }
+        ImGui::Columns(1);
+        ImGui::Separator();
     }
 
     persist int custom_seed = 0;
