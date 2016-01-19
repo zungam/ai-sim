@@ -1,7 +1,3 @@
-/* TODO:
-- Synchronize sim_timestep with speed of application
-*/
-
 #define SIM_IMPLEMENTATION
 #include "sim.h"
 
