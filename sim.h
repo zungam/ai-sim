@@ -777,7 +777,9 @@ sim_State sim_init(u32 seed)
     return result;
 }
 
-sim_State sim_tick(sim_State state, sim_Command cmd)
+#include <stdio.h>
+
+sim_State sim_tick(sim_State state, sim_Command new_cmd)
 {
     sim_State result = state;
     INTERNAL = &result;
@@ -801,10 +803,10 @@ sim_State sim_tick(sim_State state, sim_Command cmd)
         events[i].elapsed_time = INTERNAL->elapsed_time;
     }
 
-    if (cmd.type != sim_CommandType_NoCommand)
+    if (new_cmd.type != sim_CommandType_NoCommand)
     {
         DRONE->cmd_done = false;
-        DRONE->cmd = cmd;
+        DRONE->cmd = new_cmd;
     }
 
     switch (DRONE->cmd.type)
@@ -816,8 +818,8 @@ sim_State sim_tick(sim_State state, sim_Command cmd)
 
         case sim_CommandType_LandOnTopOf:
         {
-            DRONE->xr = TARGETS[cmd.i].x;
-            DRONE->yr = TARGETS[cmd.i].y;
+            DRONE->xr = TARGETS[DRONE->cmd.i].x;
+            DRONE->yr = TARGETS[DRONE->cmd.i].y;
             float dx = DRONE->xr - DRONE->x;
             float dy = DRONE->yr - DRONE->y;
             float len = sqrt(dx*dx + dy*dy);
@@ -856,8 +858,8 @@ sim_State sim_tick(sim_State state, sim_Command cmd)
 
         case sim_CommandType_LandInFrontOf:
         {
-            DRONE->xr = TARGETS[cmd.i].x;
-            DRONE->yr = TARGETS[cmd.i].y;
+            DRONE->xr = TARGETS[DRONE->cmd.i].x;
+            DRONE->yr = TARGETS[DRONE->cmd.i].y;
             float dx = DRONE->xr - DRONE->x;
             float dy = DRONE->yr - DRONE->y;
             float len = sqrt(dx*dx + dy*dy);
@@ -877,11 +879,6 @@ sim_State sim_tick(sim_State state, sim_Command cmd)
                 DRONE->x += vx * Sim_Timestep;
                 DRONE->y += vy * Sim_Timestep;
             }
-            if (!DRONE->landing)
-            {
-                DRONE->landing = true;
-                DRONE->land_timer = Sim_LandInFrontOf_Time;
-            }
             if (DRONE->landing)
             {
                 DRONE->land_timer -= Sim_Timestep;
@@ -900,8 +897,8 @@ sim_State sim_tick(sim_State state, sim_Command cmd)
 
         case sim_CommandType_Track:
         {
-            DRONE->xr = TARGETS[cmd.i].x;
-            DRONE->yr = TARGETS[cmd.i].y;
+            DRONE->xr = TARGETS[DRONE->cmd.i].x;
+            DRONE->yr = TARGETS[DRONE->cmd.i].y;
             float dx = DRONE->xr - DRONE->x;
             float dy = DRONE->yr - DRONE->y;
             float len = sqrt(dx*dx + dy*dy);
@@ -914,8 +911,8 @@ sim_State sim_tick(sim_State state, sim_Command cmd)
 
         case sim_CommandType_Search:
         {
-            DRONE->xr = cmd.x;
-            DRONE->yr = cmd.y;
+            DRONE->xr = DRONE->cmd.x;
+            DRONE->yr = DRONE->cmd.y;
             float dx = DRONE->xr - DRONE->x;
             float dy = DRONE->yr - DRONE->y;
             float len = sqrt(dx*dx + dy*dy);

@@ -489,6 +489,8 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
                 ImGui::Text("Search");
             } break;
         }
+        ImGui::Text("drone.x: %.2f", drone.x);
+        ImGui::Text("drone.y: %.2f", drone.y);
         ImGui::Text("x: %.2f", drone.cmd.x);
         ImGui::Text("y: %.2f", drone.cmd.y);
         ImGui::Text("i: %d", drone.cmd.i);
@@ -531,7 +533,7 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         ImGui::SliderFloat("Send interval", &send_interval, Sim_Timestep, 1.0f);
         ImGui::Separator();
 
-        ImGui::Text("Last 10 non-trivial commands recieved:");
+        ImGui::Text("Last 10 non-trivial commands received:");
         ImGui::Columns(5, "CommunicationColumns");
         ImGui::Separator();
         ImGui::Text("Time"); ImGui::NextColumn();
@@ -541,10 +543,10 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         ImGui::Text("i"); ImGui::NextColumn();
         ImGui::Separator();
         int count = 0;
-        for (int i = 0; count < 10 && i < HISTORY_LENGTH; i++)
+        for (int i = 0; count < 10 && i <= seek_cursor; i++)
         {
-            sim_State state_i = HISTORY_STATE[HISTORY_LENGTH-1-i];
-            sim_Command cmd_i = HISTORY_CMD[HISTORY_LENGTH-1-i];
+            sim_State state_i = HISTORY_STATE[seek_cursor-i];
+            sim_Command cmd_i = HISTORY_CMD[seek_cursor-i];
             if (cmd_i.type == sim_CommandType_NoCommand)
                 continue;
             char label[32];
@@ -554,6 +556,7 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
             if (cmd_i.type == sim_CommandType_LandInFrontOf) ImGui::Text("Land 180");
             if (cmd_i.type == sim_CommandType_LandOnTopOf)   ImGui::Text("Land 45");
             if (cmd_i.type == sim_CommandType_Track)         ImGui::Text("Track");
+            if (cmd_i.type == sim_CommandType_Search)        ImGui::Text("Search");
             ImGui::NextColumn();
             ImGui::Text("%.2f", cmd_i.x); ImGui::NextColumn();
             ImGui::Text("%.2f", cmd_i.y); ImGui::NextColumn();
