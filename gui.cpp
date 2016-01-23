@@ -2,6 +2,8 @@
 #include "sim.h"
 #include "gui.h"
 
+#include "lib/jo_gif.cpp"
+
 #define global static
 #define persist static
 
@@ -85,8 +87,8 @@ r32 time_since(u64 then)
     return get_elapsed_time(then, now);
 }
 
-global r32 ndc_scale_x;
-global r32 ndc_scale_y;
+global r32 NDC_SCALE_X;
+global r32 NDC_SCALE_Y;
 
 global sim_State STATE;
 global sim_State HISTORY_STATE[History_Max_Length];
@@ -106,8 +108,8 @@ void add_history(sim_Command cmd, sim_State state)
 void world_to_ndc(r32 x_world, r32 y_world,
                   r32 *x_ndc, r32 *y_ndc)
 {
-    *x_ndc = (x_world - 10.0f) * ndc_scale_x;
-    *y_ndc = (y_world - 10.0f) * ndc_scale_y;
+    *x_ndc = (x_world - 10.0f) * NDC_SCALE_X;
+    *y_ndc = (y_world - 10.0f) * NDC_SCALE_Y;
 }
 
 void vertex2f(r32 x, r32 y)
@@ -231,58 +233,29 @@ bool read_history(char *filename)
         HISTORY_STATE[i] = STATE;
     }
     fclose(f);
-    Printf("Loaded %s\n", filename);
     return true;
 }
 
 void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
 {
-    #if 0
-    persist bool show_test_window = true;
-    persist bool show_another_window = false;
-    persist ImVec4 clear_color = ImColor(114, 144, 154);
-    ImGui_ImplSdl_NewFrame(mode.window);
-
-    // 1. Show a simple window
-    // Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets appears in a window automatically called "Debug"
-    {
-        static r32 f = 0.0f;
-        ImGui::Text("Hello, world!");
-        ImGui::SliderFloat("r32", &f, 0.0f, 1.0f);
-        ImGui::ColorEdit3("clear color", (r32*)&clear_color);
-        if (ImGui::Button("Test Window")) show_test_window ^= 1;
-        if (ImGui::Button("Another Window")) show_another_window ^= 1;
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-    }
-
-    // 2. Show another simple window, this time using an explicit Begin/End pair
-    if (show_another_window)
-    {
-        ImGui::SetNextWindowSize(ImVec2(200,100), ImGuiSetCond_FirstUseEver);
-        ImGui::Begin("Another Window", &show_another_window);
-        ImGui::Text("Hello");
-        ImGui::End();
-    }
-
-    // 3. Show the ImGui test window. Most of the sample code is in ImGui::ShowTestWindow()
-    if (show_test_window)
-    {
-        ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiSetCond_FirstUseEver);
-        ImGui::ShowTestWindow(&show_test_window);
-    }
-
-    // Rendering
-    glViewport(0, 0, (int)ImGui::GetIO().DisplaySize.x, (int)ImGui::GetIO().DisplaySize.y);
-    glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
-    glClear(GL_COLOR_BUFFER_BIT);
-    ImGui::Render();
-    #else
     persist bool flag_DrawDroneGoto     = true;
     persist bool flag_DrawDrone         = true;
     persist bool flag_DrawVisibleRegion = true;
     persist bool flag_DrawTargets       = true;
     persist bool flag_DrawObstacles     = true;
     persist bool flag_Paused            = false;
+    persist bool flag_Recording         = false;
+    persist bool flag_SetupRecord       = false;
+
+    persist int record_from = 0;
+    persist int record_to = 0;
+    persist int record_frame_skip = 1;
+    persist int record_width = 0;
+    persist int record_height = 0;
+    persist float record_region_x = -1.0f;
+    persist float record_region_y = -1.0f;
+    persist float record_region_scale = 2.0f;
+    persist jo_gif_t record_gif;
 
     persist int seek_cursor = 0;
     persist int selected_target = -1;
@@ -300,12 +273,53 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     persist float send_timer = 0.0f;
     persist float send_interval = 1.0f; // In simulation time units
 
-    ndc_scale_x = (mode.height / (r32)mode.width) / 12.0f;
-    ndc_scale_y = 1.0f / 12.0f;
+    NDC_SCALE_X = (mode.height / (r32)mode.width) / 12.0f;
+    NDC_SCALE_Y = 1.0f / 12.0f;
+
+    if (flag_Recording || flag_SetupRecord)
+    {
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+        float Ax = 2.0f / record_region_scale;
+        float Bx = -1.0f - Ax*record_region_x;
+        float Ay = 2.0f / record_region_scale;
+        float By = -1.0f - Ay*record_region_y;
+        float modelview[] = {
+            Ax,   0.0f, 0.0f, 0.0f,
+            0.0f, Ay,   0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            Bx,   By,   0.0f, 1.0f
+        };
+        glLoadMatrixf(modelview);
+    }
+    else
+    {
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+    }
 
     if (!flag_Paused)
     {
-        if (seek_cursor < HISTORY_LENGTH-1)
+        if (flag_Recording)
+        {
+            if (seek_cursor >= record_to)
+            {
+                flag_Paused = true;
+                flag_Recording = false;
+                seek_cursor = record_from;
+                jo_gif_end(&record_gif);
+            }
+            else if (seek_cursor + record_frame_skip >= record_to)
+            {
+                // clamp to end
+                seek_cursor = record_to;
+            }
+            else
+            {
+                seek_cursor += record_frame_skip;
+            }
+        }
+        else if (seek_cursor < HISTORY_LENGTH-1)
         {
             seek_cursor++;
         }
@@ -340,7 +354,15 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     sim_Robot *targets = draw_state.robots;
     sim_Robot *obstacles = draw_state.robots + Num_Targets;
 
-    glViewport(0, 0, mode.width, mode.height);
+    if (flag_Recording || flag_SetupRecord)
+    {
+        glViewport(0, 0, record_width, record_height);
+    }
+    else
+    {
+        glViewport(0, 0, mode.width, mode.height);
+    }
+
     glClearColor(color_Clear.r,
                  color_Clear.g,
                  color_Clear.b,
@@ -429,8 +451,26 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     }
     glEnd();
 
+    // TODO: Change capture res?
+    if (flag_Recording)
+    {
+        static unsigned char capture_data[1024*1024*4];
+        Assert(sizeof(capture_data) >=
+               record_width*record_height*4);
+        glReadPixels(0, 0,
+                     record_width,
+                     record_height,
+                     GL_RGBA,
+                     GL_UNSIGNED_BYTE,
+                     capture_data);
+
+        jo_gif_frame(&record_gif, capture_data,
+                     2, false);
+    }
+
     ImGui_ImplSdl_NewFrame(mode.window);
 
+    // DRAW FLAGS
     if (ImGui::CollapsingHeader("Rendering"))
     {
         ImGui::Checkbox("Drone goto", &flag_DrawDroneGoto);
@@ -438,8 +478,9 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         ImGui::Checkbox("Visible region", &flag_DrawVisibleRegion);
         ImGui::Checkbox("Targets", &flag_DrawTargets);
         ImGui::Checkbox("Obstacles", &flag_DrawObstacles);
-    }
+    } // END DRAW FLAGS
 
+    // COLORS
     if (ImGui::CollapsingHeader("Colors"))
     {
         ImGui::ColorEdit4("Clear", &color_Clear.r);
@@ -450,8 +491,9 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         ImGui::ColorEdit4("Obstacles", &color_Obstacles.r);
         ImGui::ColorEdit4("Drone", &color_Drone.r);
         ImGui::ColorEdit4("DroneGoto", &color_DroneGoto.r);
-    }
+    } // END COLORS
 
+    // REWIND HISTORY
     if (ImGui::CollapsingHeader("Seek"))
     {
         ImGui::Checkbox("Paused", &flag_Paused);
@@ -460,8 +502,9 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         if (seek_cursor < 0) seek_cursor = 0;
         if (seek_cursor > HISTORY_LENGTH-1) seek_cursor = HISTORY_LENGTH-1;
         ImGui::Text("Time: %.2f seconds", (seek_cursor+1) * Sim_Timestep);
-    }
+    } // END REWIND HISTORY
 
+    // ROBOTS
     if (ImGui::CollapsingHeader("Robots"))
     {
         ImGui::Columns(4, "RobotsColumns");
@@ -488,14 +531,18 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     else
     {
         selected_target = -1;
-    }
+    } // END ROBOTS
 
+    // COMMUNICATION
     if (ImGui::CollapsingHeader("Communication"))
     {
-        ImGui::TextWrapped("The rate at which the state is sent can be changed using this slider."
-                           "The slider value represents the time interval (in simulation time) "
+        ImGui::TextWrapped("The rate at which the state is "
+                           "sent can be changed using this slider. "
+                           "The slider value represents the time "
+                           "interval (in simulation time) "
                            "between each send.");
-        ImGui::SliderFloat("Send interval", &send_interval, Sim_Timestep, 1.0f);
+        ImGui::SliderFloat("Send interval", &send_interval,
+                           Sim_Timestep, 1.0f);
         ImGui::Separator();
 
         ImGui::Text("Last 10 non-trivial commands received:");
@@ -516,7 +563,8 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
                 continue;
             char label[32];
             sprintf(label, "%.2f", state_i.elapsed_time);
-            ImGui::Selectable(label, false, ImGuiSelectableFlags_SpanAllColumns);
+            ImGui::Selectable(label, false,
+                              ImGuiSelectableFlags_SpanAllColumns);
             ImGui::NextColumn();
             switch (cmd_i.type)
             {
@@ -560,8 +608,85 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         }
         ImGui::Columns(1);
         ImGui::Separator();
-    }
+    } // END COMMUNICATION
 
+    // RECORDING GIFS
+    if (ImGui::CollapsingHeader("Recording"))
+    {
+        flag_SetupRecord = true;
+        if (ImGui::Button("Mark frame as begin"))
+        {
+            record_from = seek_cursor;
+        }
+        ImGui::SameLine();
+        ImGui::Text("Record from: %d", record_from);
+        if (ImGui::Button("Mark frame as end"))
+        {
+            record_to = seek_cursor;
+        }
+        ImGui::SameLine();
+        ImGui::Text("Record to: %d", record_to);
+        ImGui::InputInt("Frame skip", &record_frame_skip);
+
+        ImGui::InputInt("Record width", &record_width);
+        ImGui::InputInt("Record height", &record_height);
+        if (record_width <= 0) record_width = mode.width;
+        if (record_height <= 0) record_height = mode.height;
+
+        ImGui::SliderFloat("Record x", &record_region_x, -1.0f, 1.0f);
+        ImGui::SliderFloat("Record y", &record_region_y, -1.0f, 1.0f);
+        ImGui::SliderFloat("Record scale", &record_region_scale, 0.0f, 2.0f);
+
+        if (ImGui::Button("Start recording") && !flag_Recording)
+            ImGui::OpenPopup("Save recording as?");
+        if (ImGui::BeginPopupModal("Save recording as?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            persist char filename[1024];
+            persist bool init_filename = true;
+            if (init_filename)
+            {
+                sprintf(filename, "recording%u.gif", STATE.seed);
+                init_filename = false;
+            }
+            ImGui::InputText("Filename", filename, sizeof(filename));
+            ImGui::Separator();
+
+            if (ImGui::Button("OK", ImVec2(120,0)))
+            {
+                flag_Recording = true;
+                flag_Paused = false;
+                seek_cursor = record_from-1;
+                record_gif = jo_gif_start(filename, (short)record_width, (short)record_height, 0, 32);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120,0)))
+            {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+
+        if (ImGui::Button("Stop recording") && flag_Recording)
+        {
+            flag_Recording = false;
+            flag_Paused = true;
+            jo_gif_end(&record_gif);
+        }
+
+        if (record_from < 0) record_from = 0;
+        if (record_from > HISTORY_LENGTH-1) record_from = HISTORY_LENGTH-1;
+        if (record_to < record_from) record_to = record_from;
+        if (record_to > HISTORY_LENGTH-1) record_to = HISTORY_LENGTH-1;
+        if (record_frame_skip < 1) record_frame_skip = 1;
+        ImGui::Separator();
+    }
+    else
+    {
+        flag_SetupRecord = false;
+    } // END RECORDING GIFS
+
+    // RESET AND SET SEED
     persist int custom_seed = 0;
     if (ImGui::Button("Reset"))
     {
@@ -576,7 +701,9 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
     }
     ImGui::SameLine();
     ImGui::InputInt("Seed", &custom_seed);
+    // END RESET AND SET SEED
 
+    // SAVE SIMULATION
     if (ImGui::Button("Save.."))
         ImGui::OpenPopup("Save as?");
     if (ImGui::BeginPopupModal("Save as?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
@@ -602,10 +729,11 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
-    }
+    } // END SAVE SIMULATION
 
     ImGui::SameLine();
 
+    // LOAD SIMULATION
     if (ImGui::Button("Load.."))
         ImGui::OpenPopup("Load file?");
     if (ImGui::BeginPopupModal("Load file?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
@@ -633,12 +761,10 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
-    }
+    } // END LOAD SIMULATION
 
     ImGui::Render();
-
-    #endif
-}
+} // END gui_tick
 
 int main(int argc, char *argv[])
 {
@@ -664,7 +790,7 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER,          mode.double_buffer);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,            mode.depth_bits);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE,          mode.stencil_bits);
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS,    mode.multisamples > 0 ? 1 : 0);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS,    mode.multisamples>0?1:0);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES,    mode.multisamples);
 
     mode.window = SDL_CreateWindow(
