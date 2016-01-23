@@ -666,7 +666,7 @@ vector_length(float dx, float dy)
 }
 
 static float
-compute_drone_visibility(float height_above_ground)
+compute_drone_view_radius(float height_above_ground)
 {
     // Interpolates between 0.5 meters and
     // 3 meters view radius when height goes
@@ -708,7 +708,7 @@ sim_State sim_init(u32 seed)
 
     DRONE->x = 10.0f;
     DRONE->y = 10.0f;
-    DRONE->z = 3.0f;
+    DRONE->z = 3.0f; // TODO: Dynamics for z when landing
     DRONE->xr = 10.0f;
     DRONE->yr = 10.0f;
     DRONE->v_max = 1.0f;
@@ -1059,9 +1059,15 @@ sim_Observed_State sim_observe_state(sim_State state)
     result.drone_cmd_done = state.drone.cmd_done;
     sim_Robot *targets = state.robots;
     sim_Robot *obstacles = state.robots + Num_Targets;
+    float visible_radius = compute_drone_view_radius(state.drone.z);
     for (u32 i = 0; i < Num_Targets; i++)
     {
-        result.target_in_view[i] = false;
+        float dx = state.drone.x - targets[i].x;
+        float dy = state.drone.y - targets[i].y;
+        if (vector_length(dx, dy) <= visible_radius)
+            result.target_in_view[i] = true;
+        else
+            result.target_in_view[i] = false;
         result.target_reversing[i] = false;
         result.target_removed[i] = targets[i].removed;
         result.target_x[i] = targets[i].x;

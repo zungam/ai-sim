@@ -18,7 +18,8 @@ int main()
     ai_State ai_state = ai_State_1;
 
     sim_State state;
-    while (1)
+    bool running = true;
+    while (running)
     {
         sim_recv_state(&state);
         printf("Recv state %.2f\n", state.elapsed_time);
