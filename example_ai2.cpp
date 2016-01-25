@@ -6,16 +6,17 @@
 #include <stdlib.h>
 #define Tile_Dim 20
 #define Num_Sims 512
-#define for_each_tile(it)    for (int it = 0; it < Tile_Dim*Tile_Dim; it++)
-#define for_each_tilerow(it) for (int it = 0; it < Tile_Dim;          it++)
-#define for_each_target(it)  for (int it = 0; it < Num_Targets;       it++)
-#define for_each_sim(it)     for (int it = 0; it < Num_Sims;          it++)
+#define for_each_tile(it)     for (int it = 0; it < Tile_Dim*Tile_Dim; it++)
+#define for_each_tilerow(it)  for (int it = 0; it < Tile_Dim;          it++)
+#define for_each_obstacle(it) for (int it = 0; it < Num_Obstacles;     it++)
+#define for_each_target(it)   for (int it = 0; it < Num_Targets;       it++)
+#define for_each_sim(it)      for (int it = 0; it < Num_Sims;          it++)
 #define Two_Pi 6.28318530718f
 #define One_Pi 3.14159265359f
 
 #define Reverse_Interval 20.5f
 #define Target_Speed 0.33f
-#define Target_Collision_Radius 0.7f
+#define Target_Collision_Radius 0.5f
 #define Target_Collision_Radius2 (Target_Collision_Radius*Target_Collision_Radius)
 // Can we query this radius from Perception?
 #define Target_Detection_Radius 2.0f
@@ -34,6 +35,9 @@ struct Simulation
     float y[Num_Targets];
     float q[Num_Targets];
     float t[Num_Targets];
+    float obstacle_x[Num_Obstacles];
+    float obstacle_y[Num_Obstacles];
+    float obstacle_t[Num_Obstacles];
 };
 
 void sim_tick(Simulation *sim, float dt)
@@ -73,6 +77,26 @@ void sim_tick(Simulation *sim, float dt)
         sim->y[target] = y;
         sim->q[target] = q;
         sim->t[target] = t;
+    }
+
+    for_each_obstacle(obstacle)
+    {
+        float w = 0.33f / 5.0f;
+        sim->obstacle_t[obstacle] += w*dt;
+        float t = sim->obstacle_t[obstacle];
+        sim->obstacle_x[obstacle] = 10.0f + 5.0f * cos(t);
+        sim->obstacle_y[obstacle] = 10.0f + 5.0f * sin(t);
+
+        for_each_target(target)
+        {
+            float dx = sim->obstacle_x[obstacle] - sim->x[target];
+            float dy = sim->obstacle_y[obstacle] - sim->y[target];
+            float dp = dx*dx + dy*dy;
+            if (dp < Target_Collision_Radius2)
+            {
+                sim->q[target] += One_Pi;
+            }
+        }
     }
 }
 
@@ -155,6 +179,13 @@ int main(int argc, char **argv)
             sims[sim].y[target] = y;
             sims[sim].q[target] = q;
             sims[sim].t[target] = Reverse_Interval;
+        }
+        for_each_obstacle(obstacle)
+        {
+            float t = Two_Pi * obstacle / (float)(Num_Obstacles);
+            sims[sim].obstacle_x[obstacle] = 10.0f + 5.0f * cos(t);
+            sims[sim].obstacle_y[obstacle] = 10.0f + 5.0f * sin(t);
+            sims[sim].obstacle_t[obstacle] = t;
         }
     }
 
@@ -250,13 +281,8 @@ int main(int argc, char **argv)
                 // random fashion.
                 else
                 {
-                    float n1 = -1.0f + 2.0f * frand();
-                    float n2 = -1.0f + 2.0f * frand();
-                    float n3 = -1.0f + 2.0f * frand();
-                    float n4 = -1.0f + 2.0f * frand();
-                    sims[sim].x[target] += n1 * 0.05f * delta_time;
-                    sims[sim].y[target] += n2 * 0.05f * delta_time;
-                    sims[sim].q[target] += n3 * 0.2f * delta_time;
+                    float n = -1.0f + 2.0f * frand();
+                    sims[sim].q[target] += n * 0.2f * delta_time;
                 }
             }
 
