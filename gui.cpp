@@ -733,6 +733,45 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
 
     ImGui::SameLine();
 
+    // SAVE SINGLE SNAPSHOT
+    persist bool init_snapshot_filename = true;
+    if (ImGui::Button("Save snapshot.."))
+        ImGui::OpenPopup("Save snapshot as?");
+    if (ImGui::BeginPopupModal("Save snapshot as?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        persist char filename[1024];
+        ImGui::TextWrapped("The filename is relative to the executable,"
+                           "unless you write an absolute path.");
+        if (init_snapshot_filename)
+        {
+            sprintf(filename, "snapshot%u-%u", STATE.seed, seek_cursor);
+            init_snapshot_filename = false;
+        }
+        ImGui::InputText("Filename", filename, sizeof(filename));
+        ImGui::Separator();
+
+        if (ImGui::Button("OK", ImVec2(120,0)))
+        {
+            sim_Observed_State snapshot =
+                sim_observe_state(HISTORY_STATE[seek_cursor]);
+            printf("%.2f\n", snapshot.obstacle_q[0]);
+            sim_write_snapshot(filename, snapshot);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120,0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    else
+    {
+        init_snapshot_filename = true;
+    } // END SAVE SIMULATION
+
+    ImGui::SameLine();
+
     // LOAD SIMULATION
     if (ImGui::Button("Load.."))
         ImGui::OpenPopup("Load file?");

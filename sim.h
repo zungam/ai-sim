@@ -231,10 +231,8 @@ struct sim_State
     sim_Robot robots[Num_Robots];
 };
 
-#define SIM_OBSERVE_LEVEL 1
 struct sim_Observed_State
 {
-#if SIM_OBSERVE_LEVEL==1
     float elapsed_time;
     float drone_x;
     float drone_y;
@@ -250,11 +248,6 @@ struct sim_Observed_State
     float obstacle_x[Num_Obstacles];
     float obstacle_y[Num_Obstacles];
     float obstacle_q[Num_Obstacles];
-#else
-    float drone_x;
-    float drone_y;
-    // No elapsed time: Cannot measure that!
-#endif
 };
 
 // Advances the world state forward Sim_Timestep seconds,
@@ -275,6 +268,9 @@ sim_State sim_init(u32 seed);
 // Returns the observable state from a full state description
 sim_Observed_State sim_observe_state(sim_State);
 
+sim_Observed_State sim_load_snapshot(char *filename);
+void sim_write_snapshot(char *filename, sim_Observed_State state);
+
 // TODO: Returns a full state description that best matches the
 // given observed state
 // sim_State sim_state_from_observed(sim_Observed_State);
@@ -283,7 +279,13 @@ sim_Observed_State sim_observe_state(sim_State);
 // ***********************************************************************
 //                        Implementation starts here
 // ***********************************************************************
-#include <math.h> // for abs, cos, sin
+#ifndef sim_assert
+#include <assert.h>
+#define sim_assert assert
+#endif
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
 #ifdef SIM_IMPLEMENTATION
 #ifndef PI
@@ -1052,7 +1054,6 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
 sim_Observed_State sim_observe_state(sim_State state)
 {
     sim_Observed_State result = {};
-    #if SIM_OBSERVE_LEVEL==1
     result.elapsed_time = state.elapsed_time;
     result.drone_x = state.drone.x;
     result.drone_y = state.drone.y;
@@ -1080,9 +1081,38 @@ sim_Observed_State sim_observe_state(sim_State state)
         result.obstacle_y[i] = obstacles[i].y;
         result.obstacle_q[i] = obstacles[i].q;
     }
-    #endif
 
     return result;
 }
+
+sim_Observed_State sim_load_snapshot(char *filename)
+{
+    FILE *file = fopen(filename, "rb+");
+    sim_assert(file);
+
+    fseek(file, 0, SEEK_END);
+    size_t size = ftell(file);
+    rewind(file);
+
+    char *buffer = (char*)malloc(size);
+    sim_assert(buffer);
+
+    size_t read_bytes = fread(buffer, 1, size, file);
+    sim_assert(read_bytes == sizeof(sim_Observed_State));
+
+    sim_Observed_State result = *(sim_Observed_State*)buffer;
+    fclose(file);
+    free(buffer);
+    return result;
+}
+
+void sim_write_snapshot(char *filename, sim_Observed_State state)
+{
+    FILE *file = fopen(filename, "wb+");
+    sim_assert(file);
+    fwrite((char*)&state, 1, sizeof(sim_Observed_State), file);
+    fclose(file);
+}
+
 
 #endif // SIM_IMPLEMENTATION
