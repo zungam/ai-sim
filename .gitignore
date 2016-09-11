@@ -1,5 +1,5 @@
 build/*
-!build/*.lib
-!build/*.dll
+build/*.lib
+build/*.dll
 !build/*.sh
 !build/*.bat
