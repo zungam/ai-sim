@@ -12,14 +12,17 @@ See example1.cpp for an example of a full application that communicates with the
 Running the real-time simulator
 -------------------------------
 Linux
+
     $ cd build
     $ g++ ../gui.cpp -o sim -lGL `sdl2-config --cflags --libs`
 
 OSX
+
     $ cd build
     $ g++ ../gui.cpp -o sim -framework OpenGL `sdl2-config --cflags --libs`
 
 Windows
+
     > cd build
     > run_gui.bat
     Or compile manually:
