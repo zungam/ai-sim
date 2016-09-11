@@ -13,7 +13,7 @@ enum ai_State
 
 int main()
 {
-    sim_init_msgs(false);
+    sim_init_msgs(true);
 
     ai_State ai_state = ai_State_1;
 

@@ -36,9 +36,9 @@
 #define UDP_IMPLEMENTATION
 #include "udp.h"
 
-void sim_init_msgs(bool nonblocking)
+void sim_init_msgs(bool blocking)
 {
-    udp_open(RECV_PORT, nonblocking);
+    udp_open(RECV_PORT, !blocking);
 }
 
 #ifdef SIM_CLIENT_CODE

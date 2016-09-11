@@ -4,8 +4,17 @@
 
 #include "lib/jo_gif.cpp"
 
-#define global static
-#define persist static
+#include <stdint.h>
+typedef float       r32;
+typedef uint64_t    u64;
+typedef uint32_t    u32;
+typedef uint16_t    u16;
+typedef uint8_t     u08;
+typedef int32_t     s32;
+typedef int16_t     s16;
+typedef int8_t      s08;
+#define global      static
+#define persist     static
 
 #include "SDL.h"
 #include "SDL_opengl.h"

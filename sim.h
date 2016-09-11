@@ -27,55 +27,12 @@
 // =======================================================================
 // 18. jan 2016: Exposing the internal state for now
 //
-// ***********************************************************************
-//                        User-interface starts here
-// ***********************************************************************
-
+//
 #ifndef SIM_HEADER_INCLUDE
 #define SIM_HEADER_INCLUDE
-#include <stdint.h>
-typedef float       r32;
-typedef uint64_t    u64;
-typedef uint32_t    u32;
-typedef uint16_t    u16;
-typedef uint8_t     u08;
-typedef int32_t     s32;
-typedef int16_t     s16;
-typedef int8_t      s08;
-
-#define Sim_Timestep (1.0f / 60.0f)
-#define Sim_Drone_View_Radius (2.5f)
-#define Num_Obstacles (4)
-#define Num_Targets (10)
-#define Num_Robots (Num_Obstacles + Num_Targets)
-
-// How many meters the drone should be near to
-// a robot before it is considered to be above it.
-#define Sim_Drone_Target_Proximity (0.1f)
-
-// How many meters the drone should be near to
-// a point in world space before it is considered
-// to have reached it.
-#define Sim_Drone_Goto_Proximity (0.1f)
-
-// How many seconds it should take for the drone
-// to complete a LandOnTopOf command, once it
-// enters the target proximity range.
-#define Sim_LandOnTopOf_Time (2.0f)
-
-// How many seconds it should take for the drone
-// to complete a LandInFrontOf command, once it
-// enters the target proximity range.
-#define Sim_LandInFrontOf_Time (2.0f)
-
-// How many meters must a target walk beyond
-// an edge to be removed
-#define Sim_Target_Removal_Margin (0.5f)
-
-// Distance between iRobot wheels in metres
-#define Sim_Robot_Wheel_Distance (0.5f)
-#define Sim_Target_Init_Radius (1.0f)
-#define Sim_Obstacle_Init_Radius (5.0f)
+#define Num_Obstacles (4)  // Number of robots with pole
+#define Num_Targets   (10) // Number of robots without pole
+#define Num_Robots    (Num_Obstacles + Num_Targets)
 
 enum sim_CommandType
 {
@@ -93,6 +50,102 @@ struct sim_Command
     float y;
     int i;
 };
+
+struct sim_Observed_State
+{
+    float elapsed_time;
+    float drone_x;
+    float drone_y;
+    bool  drone_cmd_done;
+
+    bool  target_in_view[Num_Targets];
+    bool  target_reversing[Num_Targets];
+    bool  target_removed[Num_Targets];
+    float target_x[Num_Targets];
+    float target_y[Num_Targets];
+    float target_q[Num_Targets];
+
+    float obstacle_x[Num_Obstacles];
+    float obstacle_y[Num_Obstacles];
+    float obstacle_q[Num_Obstacles];
+};
+
+struct sim_State;
+
+sim_State          sim_tick(sim_State, sim_Command);
+sim_State          sim_init(unsigned int);
+sim_Observed_State sim_observe_state(sim_State);
+
+sim_Observed_State sim_load_snapshot(char*);
+void               sim_write_snapshot(char*, sim_Observed_State);
+
+// sim_tick is advances the world state (given as an argument) by Sim_Timestep
+// seconds of real time, and returns the new state.
+//
+// sim_init returns a default state with the robots configured according to
+// the IARC rules, and with a specified seed for the random number generator.
+//
+// sim_observe_state takes a full state description and returns what we think
+// is an appropriate "handicapped" state vector. i.e. an approximation of what
+// we might get from computer vision and object tracking.
+//
+// If you want to store an observed state to file, or load it from a file,
+// you can use sim_load/write_snapshot.
+
+
+
+
+// ***********************************************************************
+//                        Tweakable simulation parameters
+// ***********************************************************************
+
+#define Sim_Timestep (1.0f / 60.0f)       // Simulation timestep
+
+// Note:
+// Increasing Sim_Timestep will decrease the accuracy of the simulation,
+// and may cause weird bugs like missed collisions. If you would like to
+// simulate ahead a given number of seconds, I would suggest to keep the
+// timestep low and run it in a for loop for n=Interval/Sim_Timestep
+// iterations.
+
+#define Sim_Drone_View_Radius (2.5f)      // Radius in meters of the circle
+                                          // around the drone where robots
+                                          // are considered visible.
+
+#define Sim_Drone_Target_Proximity (0.1f) // How many meters the drone can
+                                          // be near to a robot, before it
+                                          // is considered to be above it.
+
+#define Sim_Drone_Goto_Proximity (0.1f)   // How many meters the drone can
+                                          // near a point in the world before
+                                          // it is considered to have reached
+                                          // it.
+
+#define Sim_LandOnTopOf_Time (2.0f)       // How many seconds it should take
+                                          // to complete a LandOnTopOf command
+                                          // after the drone gets close enough.
+
+#define Sim_LandInFrontOf_Time (2.0f)     // How many seconds it should take
+                                          // to complete a LandInFrontOf command
+                                          // after the drone gets close enough.
+
+#define Sim_Target_Removal_Margin (0.5f)  // How many meters a target can
+                                          // drive behind an edge, before it
+                                          // is removed.
+
+#define Sim_Robot_Wheel_Distance (0.5f)   // Meters between iRobot wheels
+
+#define Sim_Target_Init_Radius (1.0f)     // Initial target spawn radius
+
+#define Sim_Obstacle_Init_Radius (5.0f)   // Initial obstacle spawn radius
+
+
+
+
+// ***********************************************************************
+//                        Semi-implementation details for
+//                             specially interested
+// ***********************************************************************
 
 // The world-space coordinate system is defined as follows:
 // The red line is considered the x-axis, while the left
@@ -217,70 +270,23 @@ struct sim_Drone
 struct sim_State
 {
     // Random-number-generator state
-    u32 seed;
-    u32 xor128_x;
-    u32 xor128_y;
-    u32 xor128_z;
-    u32 xor128_w;
+    unsigned int seed;
+    unsigned int xor128_x;
+    unsigned int xor128_y;
+    unsigned int xor128_z;
+    unsigned int xor128_w;
 
     sim_Time elapsed_time;
     sim_Drone drone;
     sim_Robot robots[Num_Robots];
 };
 
-struct sim_Observed_State
-{
-    float elapsed_time;
-    float drone_x;
-    float drone_y;
-    bool  drone_cmd_done;
-
-    bool  target_in_view[Num_Targets];
-    bool  target_reversing[Num_Targets];
-    bool  target_removed[Num_Targets];
-    float target_x[Num_Targets];
-    float target_y[Num_Targets];
-    float target_q[Num_Targets];
-
-    float obstacle_x[Num_Obstacles];
-    float obstacle_y[Num_Obstacles];
-    float obstacle_q[Num_Obstacles];
-};
-
-// Advances the world state forward Sim_Timestep seconds,
-// Remarks
-//     Increasing Sim_Timestep will decrease the accuracy of the simulation,
-//     and may cause weird bugs like missed collisions. If you would like to
-//     simulate ahead a given number of seconds, I would suggest to keep the
-//     timestep low and run it in a for loop for n=Interval/Sim_Timestep
-//     iterations.
-// Return
-//     A snapshot of the world state after simulating ahead one time step.
-sim_State sim_tick(sim_State state, sim_Command cmd);
-
-// Returns a default state with the robots configured according to the IARC
-// rules, and with a specified seed for the random number generator.
-sim_State sim_init(u32 seed);
-
-// Returns the observable state from a full state description
-sim_Observed_State sim_observe_state(sim_State);
-
-sim_Observed_State sim_load_snapshot(char *filename);
-void sim_write_snapshot(char *filename, sim_Observed_State state);
-
-// TODO: Returns a full state description that best matches the
-// given observed state
-// sim_State sim_state_from_observed(sim_Observed_State);
 #endif // SIM_HEADER_INCLUDE
 
 // ***********************************************************************
 //                        Implementation starts here
 // ***********************************************************************
-#ifndef sim_assert
 #include <assert.h>
-#define sim_assert assert
-#endif
-#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 
@@ -303,30 +309,30 @@ static sim_Drone *DRONE;
 // This algorithm has a maximal period of 2^128 − 1.
 // https://en.wikipedia.org/wiki/Xorshift
 static void
-xor128(u32 *in_out_x,
-       u32 *in_out_y,
-       u32 *in_out_z,
-       u32 *in_out_w)
+xor128(unsigned int *in_out_x,
+       unsigned int *in_out_y,
+       unsigned int *in_out_z,
+       unsigned int *in_out_w)
 {
-    u32 x = *in_out_x;
-    u32 y = *in_out_y;
-    u32 z = *in_out_z;
-    u32 w = *in_out_w;
-    u32 t = x ^ (x << 11);
+    unsigned int x = *in_out_x;
+    unsigned int y = *in_out_y;
+    unsigned int z = *in_out_z;
+    unsigned int w = *in_out_w;
+    unsigned int t = x ^ (x << 11);
     *in_out_x = y;
     *in_out_y = z;
     *in_out_z = w;
     *in_out_w = w ^ (w >> 19) ^ t ^ (t >> 8);
 }
 
-static u32
+static unsigned int
 _xor128()
 {
     xor128(&INTERNAL->xor128_x,
            &INTERNAL->xor128_y,
            &INTERNAL->xor128_z,
            &INTERNAL->xor128_w);
-    u32 result = INTERNAL->xor128_w;
+    unsigned int result = INTERNAL->xor128_w;
     return result;
 }
 
@@ -647,21 +653,21 @@ robot_integrate(sim_Robot *robot, float dt)
 {
     float v = 0.5f * (robot->vl + robot->vr);
     float w = (robot->vr - robot->vl) / (robot->L*0.5f);
-    robot->x += v * cos(robot->q) * dt;
-    robot->y += v * sin(robot->q) * dt;
+    robot->x += v * cosf(robot->q) * dt;
+    robot->y += v * sinf(robot->q) * dt;
     robot->q += w * dt;
 
     // Wrap angles
     robot->q = wrap_angle(robot->q);
 
-    robot->forward_x = cos(robot->q);
-    robot->forward_y = sin(robot->q);
+    robot->forward_x = cosf(robot->q);
+    robot->forward_y = sinf(robot->q);
 }
 
 static float
 vector_length(float dx, float dy)
 {
-    return sqrt(dx*dx + dy*dy);
+    return sqrtf(dx*dx + dy*dy);
 }
 
 static float
@@ -677,7 +683,7 @@ compute_drone_view_radius(float height_above_ground)
     return view_radius;
 }
 
-sim_State sim_init(u32 seed)
+sim_State sim_init(unsigned int seed)
 {
     sim_State result;
     INTERNAL = &result;
@@ -719,7 +725,7 @@ sim_State sim_init(u32 seed)
     DRONE->cmd_done = false;
     DRONE->land_timer = 0.0f;
 
-    for (u32 i = 0; i < Num_Targets; i++)
+    for (unsigned int i = 0; i < Num_Targets; i++)
     {
         sim_Robot robot = {};
 
@@ -737,8 +743,8 @@ sim_State sim_init(u32 seed)
 
         // Spawn each ground robot in a circle
         float t = TWO_PI * i / (float)(Num_Targets);
-        robot.x = 10.0f + Sim_Target_Init_Radius * cos(t);
-        robot.y = 10.0f + Sim_Target_Init_Radius * sin(t);
+        robot.x = 10.0f + Sim_Target_Init_Radius * cosf(t);
+        robot.y = 10.0f + Sim_Target_Init_Radius * sinf(t);
         robot.q = t;
         robot.internal.initialized = false;
         robot.state = Robot_Start;
@@ -747,7 +753,7 @@ sim_State sim_init(u32 seed)
         TARGETS[i] = robot;
     }
 
-    for (u32 i = 0; i < Num_Obstacles; i++)
+    for (unsigned int i = 0; i < Num_Obstacles; i++)
     {
         float t = TWO_PI * i / (float)(Num_Obstacles);
 
@@ -757,8 +763,8 @@ sim_State sim_init(u32 seed)
 
         // The obstacles are also spawned in a circle,
         // but at an initial radius of 5 meters.
-        robot.x = 10.0f + Sim_Obstacle_Init_Radius * cos(t);
-        robot.y = 10.0f + Sim_Obstacle_Init_Radius * sin(t);
+        robot.x = 10.0f + Sim_Obstacle_Init_Radius * cosf(t);
+        robot.y = 10.0f + Sim_Obstacle_Init_Radius * sinf(t);
         robot.q = t + PI / 2.0f;
         robot.internal.initialized = false;
         robot.state = Robot_Start;
@@ -790,7 +796,7 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
     INTERNAL->elapsed_time += Sim_Timestep;
 
     robot_Event events[Num_Robots] = {0};
-    for (u32 i = 0; i < Num_Robots; i++)
+    for (unsigned int i = 0; i < Num_Robots; i++)
     {
         if (ROBOTS[i].removed) continue;
 
@@ -821,7 +827,7 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
             DRONE->yr = TARGETS[DRONE->cmd.i].y;
             float dx = DRONE->xr - DRONE->x;
             float dy = DRONE->yr - DRONE->y;
-            float len = sqrt(dx*dx + dy*dy);
+            float len = sqrtf(dx*dx + dy*dy);
             if (len < Sim_Drone_Target_Proximity)
             {
                 if (!DRONE->landing)
@@ -861,7 +867,7 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
             DRONE->yr = TARGETS[DRONE->cmd.i].y;
             float dx = DRONE->xr - DRONE->x;
             float dy = DRONE->yr - DRONE->y;
-            float len = sqrt(dx*dx + dy*dy);
+            float len = sqrtf(dx*dx + dy*dy);
             if (len < Sim_Drone_Target_Proximity)
             {
                 if (!DRONE->landing)
@@ -900,7 +906,7 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
             DRONE->yr = TARGETS[DRONE->cmd.i].y;
             float dx = DRONE->xr - DRONE->x;
             float dy = DRONE->yr - DRONE->y;
-            float len = sqrt(dx*dx + dy*dy);
+            float len = sqrtf(dx*dx + dy*dy);
             float v = DRONE->v_max / len;
             float vx = v * dx;
             float vy = v * dy;
@@ -914,7 +920,7 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
             DRONE->yr = DRONE->cmd.y;
             float dx = DRONE->xr - DRONE->x;
             float dy = DRONE->yr - DRONE->y;
-            float len = sqrt(dx*dx + dy*dy);
+            float len = sqrtf(dx*dx + dy*dy);
             if (len < Sim_Drone_Goto_Proximity)
             {
                 DRONE->cmd.type = sim_CommandType_NoCommand;
@@ -941,7 +947,7 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
 
     collision_info collision[Num_Robots] = {0};
 
-    for (u32 i = 0; i < Num_Robots; i++)
+    for (unsigned int i = 0; i < Num_Robots; i++)
     {
         if (ROBOTS[i].removed) continue;
 
@@ -970,7 +976,7 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
         // Check for collisions and compute the average resolve
         // delta vector. The resolve delta will be used to move
         // the robot away so it no longer collides.
-        for (u32 n = 0; n < Num_Robots; n++)
+        for (unsigned int n = 0; n < Num_Robots; n++)
         {
             if (i == n || ROBOTS[n].removed)
             {
@@ -1015,7 +1021,7 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
             events[i].is_bumper = 1;
     }
 
-    for (u32 i = 0; i < Num_Robots; i++)
+    for (unsigned int i = 0; i < Num_Robots; i++)
     {
         if (ROBOTS[i].removed)
             continue;
@@ -1058,7 +1064,7 @@ sim_Observed_State sim_observe_state(sim_State state)
     sim_Robot *targets = state.robots;
     sim_Robot *obstacles = state.robots + Num_Targets;
     float visible_radius = compute_drone_view_radius(state.drone.z);
-    for (u32 i = 0; i < Num_Targets; i++)
+    for (unsigned int i = 0; i < Num_Targets; i++)
     {
         float dx = state.drone.x - targets[i].x;
         float dy = state.drone.y - targets[i].y;
@@ -1072,7 +1078,7 @@ sim_Observed_State sim_observe_state(sim_State state)
         result.target_y[i] = targets[i].y;
         result.target_q[i] = targets[i].q;
     }
-    for (u32 i = 0; i < Num_Obstacles; i++)
+    for (unsigned int i = 0; i < Num_Obstacles; i++)
     {
         result.obstacle_x[i] = obstacles[i].x;
         result.obstacle_y[i] = obstacles[i].y;
@@ -1085,17 +1091,17 @@ sim_Observed_State sim_observe_state(sim_State state)
 sim_Observed_State sim_load_snapshot(char *filename)
 {
     FILE *file = fopen(filename, "rb+");
-    sim_assert(file);
+    assert(file);
 
     fseek(file, 0, SEEK_END);
     size_t size = ftell(file);
     rewind(file);
 
     char *buffer = (char*)malloc(size);
-    sim_assert(buffer);
+    assert(buffer);
 
     size_t read_bytes = fread(buffer, 1, size, file);
-    sim_assert(read_bytes == sizeof(sim_Observed_State));
+    assert(read_bytes == sizeof(sim_Observed_State));
 
     sim_Observed_State result = *(sim_Observed_State*)buffer;
     fclose(file);
@@ -1106,7 +1112,7 @@ sim_Observed_State sim_load_snapshot(char *filename)
 void sim_write_snapshot(char *filename, sim_Observed_State state)
 {
     FILE *file = fopen(filename, "wb+");
-    sim_assert(file);
+    assert(file);
     fwrite((char*)&state, 1, sizeof(sim_Observed_State), file);
     fclose(file);
 }
