@@ -835,8 +835,6 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    printf("Hello world\n");
-
     VideoMode mode = {};
     mode.width = 800;
     mode.height = 600;
