@@ -835,6 +835,8 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    printf("Hello world\n");
+
     VideoMode mode = {};
     mode.width = 800;
     mode.height = 600;
@@ -880,7 +882,7 @@ int main(int argc, char *argv[])
     SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES,    &mode.multisamples);
     mode.swap_interval = SDL_GL_GetSwapInterval();
 
-    sim_init_msgs(true);
+    sim_init_msgs(false);
 
     ImGui_ImplSdl_Init(mode.window);
 
@@ -949,5 +951,6 @@ int main(int argc, char *argv[])
     SDL_GL_DeleteContext(context);
     SDL_DestroyWindow(mode.window);
     SDL_Quit();
+
     return 0;
 }
