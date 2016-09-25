@@ -14,7 +14,7 @@ int main()
     cmd.i = 0;
     for (int i = 0; i < 1024; i++)
     {
-        for (u32 tick = 0; tick < 100; tick++)
+        for (unsigned int tick = 0; tick < 100; tick++)
         {
             sim = sim_tick(sim, cmd);
             state = sim_observe_state(sim);
@@ -27,28 +27,28 @@ int main()
         printf("time: %.2f seconds\n", state.elapsed_time);
         printf("         GREEN        \n");
         printf("+--------------------+\n");
-        for (s32 yi = 0; yi < 20; yi++)
+        for (int yi = 0; yi < 20; yi++)
         {
             printf("|");
-            for (s32 xi = 0; xi < 20; xi++)
+            for (int xi = 0; xi < 20; xi++)
             {
-                s32 x_grid = xi;
-                s32 y_grid = 19 - yi;
+                int x_grid = xi;
+                int y_grid = 19 - yi;
                 bool target_at_xy = false;
                 bool obstacle_at_xy = false;
-                for (u32 target = 0; target < Num_Targets; target++)
+                for (unsigned int target = 0; target < Num_Targets; target++)
                 {
                     if (state.target_removed[target])
                         continue;
-                    s32 xt = (s32)state.target_x[target];
-                    s32 yt = (s32)state.target_y[target];
+                    int xt = (int)state.target_x[target];
+                    int yt = (int)state.target_y[target];
                     if (x_grid == xt && y_grid == yt)
                         target_at_xy = true;
                 }
-                for (u32 obstacle = 0; obstacle < Num_Obstacles; obstacle++)
+                for (unsigned int obstacle = 0; obstacle < Num_Obstacles; obstacle++)
                 {
-                    s32 xt = (s32)state.obstacle_x[obstacle];
-                    s32 yt = (s32)state.obstacle_y[obstacle];
+                    int xt = (int)state.obstacle_x[obstacle];
+                    int yt = (int)state.obstacle_y[obstacle];
                     if (x_grid == xt && y_grid == yt)
                         obstacle_at_xy = true;
                 }
