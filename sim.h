@@ -1088,9 +1088,21 @@ sim_Observed_State sim_observe_state(sim_State state)
     return result;
 }
 
+static FILE *stbi__fopen(char const *filename, char const *mode)
+{
+   FILE *f;
+#if defined(_MSC_VER) && _MSC_VER >= 1400
+   if (0 != fopen_s(&f, filename, mode))
+      f=0;
+#else
+   f = fopen(filename, mode);
+#endif
+   return f;
+}
+
 sim_Observed_State sim_load_snapshot(char *filename)
 {
-    FILE *file = fopen(filename, "rb+");
+    FILE *file = stbi__fopen(filename, "rb+");
     assert(file);
 
     fseek(file, 0, SEEK_END);
@@ -1111,7 +1123,7 @@ sim_Observed_State sim_load_snapshot(char *filename)
 
 void sim_write_snapshot(char *filename, sim_Observed_State state)
 {
-    FILE *file = fopen(filename, "wb+");
+    FILE *file = stbi__fopen(filename, "wb+");
     assert(file);
     fwrite((char*)&state, 1, sizeof(sim_Observed_State), file);
     fclose(file);
