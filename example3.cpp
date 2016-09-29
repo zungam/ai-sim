@@ -57,19 +57,19 @@ struct BehaviourState
     float y;
 };
 
-float distance(BehaviourState a,
-               BehaviourState b)
-{
-    float dq = min(abs(a.q - b.q), abs(a.q - Two_Pi - b.q));
-    float dx = b.x - a.x;
-    float dy = b.y - a.y;
-    float dp = dx*dx + dy*dy;
+// float distance(BehaviourState a,
+//                BehaviourState b)
+// {
+//     float dq = min(abs(a.q - b.q), abs(a.q - Two_Pi - b.q));
+//     float dx = b.x - a.x;
+//     float dy = b.y - a.y;
+//     float dp = dx*dx + dy*dy;
 
-    float weight_q = 1.0f;
-    float weight_p = 1.0f;
-    float ds = weight_q*dq*dq + weight_p*dp*dp;
-    return ds;
-}
+//     float weight_q = 1.0f;
+//     float weight_p = 1.0f;
+//     float ds = weight_q*dq*dq + weight_p*dp*dp;
+//     return ds;
+// }
 
 bool about_to_leave(float x, float y, float q,
                     float time_until_reverse,
