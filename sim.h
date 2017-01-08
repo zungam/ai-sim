@@ -61,6 +61,8 @@ struct sim_Observed_State
     bool  target_in_view[Num_Targets];
     bool  target_reversing[Num_Targets];
     bool  target_removed[Num_Targets];
+    float target_reward[Num_Targets];
+
     float target_x[Num_Targets];
     float target_y[Num_Targets];
     float target_q[Num_Targets];
@@ -250,6 +252,7 @@ struct sim_Robot
     float forward_y;
 
     bool removed;
+    int reward;
 };
 
 struct sim_Drone
@@ -722,7 +725,7 @@ sim_State sim_init(unsigned int seed)
     DRONE->cmd.y = 0.0f;
     DRONE->cmd.i = 0;
     DRONE->landing = false;
-    DRONE->cmd_done = false;
+    DRONE->cmd_done = true;
     DRONE->land_timer = 0.0f;
 
     for (unsigned int i = 0; i < Num_Targets; i++)
@@ -769,6 +772,7 @@ sim_State sim_init(unsigned int seed)
         robot.internal.initialized = false;
         robot.state = Robot_Start;
         robot.removed = false;
+        robot.reward = 0;
 
         OBSTACLES[i] = robot;
     }
@@ -1028,10 +1032,14 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
         robot_integrate(&ROBOTS[i], Sim_Timestep);
         if (ROBOTS[i].x < -Sim_Target_Removal_Margin ||
             ROBOTS[i].x > 20.0f + Sim_Target_Removal_Margin ||
-            ROBOTS[i].y < -Sim_Target_Removal_Margin ||
-            ROBOTS[i].y > 20.0f + Sim_Target_Removal_Margin)
+            ROBOTS[i].y < -Sim_Target_Removal_Margin)
         {
             ROBOTS[i].removed = true;
+            ROBOTS[i].reward--;
+        }
+        else if(ROBOTS[i].y > 20.0f + Sim_Target_Removal_Margin){
+            ROBOTS[i].removed = true;
+            ROBOTS[i].reward++;
         }
         if (collision[i].hits > 0)
         {
@@ -1074,6 +1082,7 @@ sim_Observed_State sim_observe_state(sim_State state)
             result.target_in_view[i] = false;
         result.target_reversing[i] = false;
         result.target_removed[i] = targets[i].removed;
+        result.target_reward[i] = targets[i].reward;
         result.target_x[i] = targets[i].x;
         result.target_y[i] = targets[i].y;
         result.target_q[i] = targets[i].q;
