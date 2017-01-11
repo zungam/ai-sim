@@ -776,7 +776,7 @@ void gui_tick(VideoMode mode, r32 gui_time, r32 gui_dt)
         {
             sim_Observed_State snapshot =
                 sim_observe_state(HISTORY_STATE[seek_cursor]);
-            printf("%.2f\n", snapshot.obstacle_q[0]);
+            //printf("%.2f\n", snapshot.obstacle_q[0]);
             sim_write_snapshot(filename, snapshot);
             ImGui::CloseCurrentPopup();
         }
@@ -844,7 +844,7 @@ int main(int argc, char *argv[])
     mode.depth_bits = 24;
     mode.stencil_bits = 8;
     mode.multisamples = 4;
-    mode.swap_interval = 1;
+    mode.swap_interval = 0;
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, mode.gl_major);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, mode.gl_minor);

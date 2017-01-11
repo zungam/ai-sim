@@ -30,7 +30,7 @@
 //
 #ifndef SIM_HEADER_INCLUDE
 #define SIM_HEADER_INCLUDE
-#define Num_Obstacles (4)  // Number of robots with pole
+#define Num_Obstacles (0)  // Number of robots with pole
 #define Num_Targets   (10) // Number of robots without pole
 #define Num_Robots    (Num_Obstacles + Num_Targets)
 
@@ -745,10 +745,18 @@ sim_State sim_init(unsigned int seed)
         robot.L = Sim_Robot_Wheel_Distance;
 
         // Spawn each ground robot in a circle
+        
         float t = TWO_PI * i / (float)(Num_Targets);
+        //float t = TWO_PI * (_xor128() % 11) / (float)(10);
         robot.x = 10.0f + Sim_Target_Init_Radius * cosf(t);
         robot.y = 10.0f + Sim_Target_Init_Radius * sinf(t);
         robot.q = t;
+        //TODO: Spawn each ground robot randomly
+
+        //robot.x = _xor128() % 21;
+        //robot.y = _xor128() % 21;
+        //robot.q = t;
+
         robot.internal.initialized = false;
         robot.state = Robot_Start;
         robot.removed = false;
@@ -854,6 +862,7 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
                 if (DRONE->land_timer < 0.0f)
                 {
                     events[DRONE->cmd.i].is_top_touch = true;
+
                 }
             }
             if (TARGETS[DRONE->cmd.i].action.was_top_touched)
