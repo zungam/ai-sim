@@ -10,10 +10,10 @@ static double GRID[22][22];
 
 struct Plank
 {
-    float x_f;
-    float y_f;
-    float x_b;
-    float y_b;
+    float x_1;
+    float y_1;
+    float x_2;
+    float y_2;
 };
 
 
@@ -107,11 +107,20 @@ Plank createPlank(float x, float y, float theta, int timeToTurn)
 {
 
     Plank plank;
-    plank.x_f = check_ifInArena(timeToTurn*SPEED*cos(theta) + x);
-    plank.y_f = check_ifInArena(timeToTurn*SPEED*sin(theta) + y);
-    plank.x_b = check_ifInArena((timeToTurn - 20)*SPEED*cos(theta) + plank.x_f);
-    plank.y_b = check_ifInArena((timeToTurn - 20)*SPEED*sin(theta) + plank.y_f);
+    plank.x_1 = check_ifInArena(timeToTurn*SPEED*cos(theta) + x);
+    plank.y_1 = check_ifInArena(timeToTurn*SPEED*sin(theta) + y);
+    plank.x_2 = check_ifInArena((timeToTurn - 20)*SPEED*cos(theta) + plank.x_1);
+    plank.y_2 = check_ifInArena((timeToTurn - 20)*SPEED*sin(theta) + plank.y_1);
     return plank;
+}
+
+float findNumericIntegral(float (*f)(float x, float y), float a_x, float a_y, float b_x, float b_y, int n){
+    float step = sqrt((pow(a_x, 2) - pow(b_x,2))+(pow(a_y, 2)-pow(b_y,2))) / n;  // width of each small rectangle
+    float area = 0.0;  // signed area
+    for (int i = 0; i < n; i ++) {
+        area += f(a_x + (i + 0.5) * step, a_y + (i + 0.5) * step) * step; // sum up each small rectangle
+    }
+    return area;
 }
 
 float findRobotValue(float x_robot, float y_robot, float theta, int timeToTurn)
@@ -119,10 +128,10 @@ float findRobotValue(float x_robot, float y_robot, float theta, int timeToTurn)
     float reward1 = 0;
     float reward2 = 0;
     Plank positions = createPlank(x_robot, y_robot, theta, timeToTurn);
-    // reward1 = gridValue(positions.x_f, abs(20-positions.y_f));
-    // reward2 = gridValue(positions.x_b, abs(20-positions.y_b));
-    reward1 = GRID[(int)positions.x_f][(int)positions.y_f];
-    reward2 = GRID[(int)positions.x_b][(int)positions.y_b];
+    // reward1 = gridValue(positions.x_1, abs(20-positions.y_1));
+    // reward2 = gridValue(positions.x_2, abs(20-positions.y_2));
+    reward1 = GRID[(int)positions.x_1][(int)positions.y_1];
+    reward2 = GRID[(int)positions.x_2][(int)positions.y_2];
 
     //if(reward1 == gridValue(0,0) || reward1 == gridValue(20,20)){
     if(reward1 == GRID[0][22] || reward1 == GRID[0][0]){
@@ -181,7 +190,8 @@ int choose_target(sim_Observed_State observed_state, sim_Observed_State previous
                 std::cout << "Target not moving" << std::endl;
                 break;
             }
-            temp_value = GRID[(int)observed_state.target_x[i]][(int)observed_state.target_y[i]];
+            temp_value = findNumericIntegral(gridValue, positions.x_1, positions.y_1, positions.x_2, positions.y_2, 5);
+            // temp_value = GRID[(int)observed_state.target_x[i]][(int)observed_state.target_y[i]];
 
             if(temp_value > max_value){
                 max_value = temp_value;
