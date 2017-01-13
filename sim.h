@@ -862,16 +862,19 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
                 if (DRONE->land_timer < 0.0f)
                 {
                     events[DRONE->cmd.i].is_top_touch = true;
-
+                    DRONE->land_timer = 0.0f;
+                    DRONE->landing = false;
+                    DRONE->cmd_done = true;
+                    DRONE->cmd.type = sim_CommandType_NoCommand;
                 }
             }
-            if (TARGETS[DRONE->cmd.i].action.was_top_touched)
-            {
-                DRONE->land_timer = 0.0f;
-                DRONE->landing = false;
-                DRONE->cmd_done = true;
-                DRONE->cmd.type = sim_CommandType_NoCommand;
-            }
+            // if (TARGETS[DRONE->cmd.i].action.was_top_touched)
+            // {
+            //     DRONE->land_timer = 0.0f;
+            //     DRONE->landing = false;
+            //     DRONE->cmd_done = true;
+            //     DRONE->cmd.type = sim_CommandType_NoCommand;
+            // }
         } break;
 
         case sim_CommandType_LandInFrontOf:
@@ -903,14 +906,17 @@ sim_State sim_tick(sim_State state, sim_Command new_cmd)
                 if (DRONE->land_timer < 0.0f)
                 {
                     events[DRONE->cmd.i].is_bumper = true;
+                    DRONE->landing = false;
+                    DRONE->cmd_done = true;
+                    DRONE->cmd.type = sim_CommandType_NoCommand;
                 }
             }
-            if (TARGETS[DRONE->cmd.i].action.was_bumped)
-            {
-                DRONE->landing = false;
-                DRONE->cmd_done = true;
-                DRONE->cmd.type = sim_CommandType_NoCommand;
-            }
+            // if (TARGETS[DRONE->cmd.i].action.was_bumped)
+            // {
+            //     DRONE->landing = false;
+            //     DRONE->cmd_done = true;
+            //     DRONE->cmd.type = sim_CommandType_NoCommand;
+            // }
         } break;
 
         case sim_CommandType_Track:
@@ -1089,12 +1095,12 @@ sim_Observed_State sim_observe_state(sim_State state)
             result.target_in_view[i] = true;
         else
             result.target_in_view[i] = false;
-        result.target_reversing[i] = false;
         result.target_removed[i] = targets[i].removed;
         result.target_reward[i] = targets[i].reward;
         result.target_x[i] = targets[i].x;
         result.target_y[i] = targets[i].y;
         result.target_q[i] = targets[i].q;
+
     }
     for (unsigned int i = 0; i < Num_Obstacles; i++)
     {

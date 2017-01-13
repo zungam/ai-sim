@@ -7,10 +7,11 @@
 //step returns the observation, reward and 1 if done.
 
 
-int step_length = 20; //Frames?
+int step_length = 120; //Frames?
 int last_robot_reward = 0;
 int last_time = 0;
-int reward_for_robot = 1;
+int last_position_reward = 0;
+int reward_for_robot = 1000;
 //AI actions
 enum ai_Actions{
 	ai_Search = 0,
@@ -31,15 +32,12 @@ struct ai_data_input_struct{
 struct step_result{
 	ai_data_input_struct observation;
 	float reward;
-	int done;     
+	bool done;
+	bool cmd_done;
 };
 
-int get_sim_Num_Targets(){
-	return Num_Targets;
-}
-
 ai_data_input_struct ai_data_input;
-sim_State state;
+sim_State state = {};
 sim_Observed_State observed_state;
 sim_Command cmd;
 
@@ -47,36 +45,61 @@ sim_Command cmd;
 //Atleast the way I do it
 
 extern "C"{
+
+	int get_sim_Num_Targets(){
+		return Num_Targets;
+	}
+
 	int initialize(){
-		sim_init(12345);
+		state = sim_init(12345);
 		observed_state = sim_observe_state(state);
 		//for reward calculation
 		last_robot_reward = 0;
 		last_time = 0;
 	}
 
+	float position_reward(){
+		//Robot position reward
+		float reward = 0;
+		for(int i = 0; i < Num_Targets; i++){
+    	    reward += -(observed_state.target_x[i] - 10);
+    	    reward += observed_state.target_y[i];
+    	}
+    	reward -= last_position_reward;
+    	last_position_reward = reward;
+    	return reward;
+	}
+
 	float reward_calculator(){
 		float result = 0;
     	int reward = 0;
 
-    	//Robot rewards. Reward is added each time, so need to remove previously rewarded robots
+    	//Robot out of bounds rewards
+    	//Reward is added each time, so need to remove previously rewarded robots
     	for(int i = 0; i < Num_Targets; i++){
     	    reward += observed_state.target_reward[i];
     	}
     	result = reward_for_robot*(reward);
-
     	result -= last_robot_reward; 
     	last_robot_reward = result;
 
-    	//Minus for amount of time spent
+    	//Time spent rewards
     	result -= (observed_state.elapsed_time - last_time);
     	last_time = observed_state.elapsed_time;
 
+    	//result += position_reward();
     	return result;
 	}
 
+	bool ready_for_command(){
+    	if(observed_state.drone_cmd_done){
+    	    return 1;
+    	}
+    	return 0;
+	}
+
 	int get_done(){
-		    int result = 0;
+		int result = 0;
     	for(int i = 0; i < Num_Targets; i++){
     	    result += observed_state.target_removed[i];
     	}
@@ -119,6 +142,7 @@ extern "C"{
 	    result.observation = update_ai_input();
 	    result.reward = reward_calculator();
 	    result.done = get_done();
+	    result.cmd_done = ready_for_command;
 	    return result;
 	}
 

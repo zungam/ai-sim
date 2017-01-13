@@ -21,7 +21,8 @@ enum ai_State
 {
     ai_landingOnTop,
     ai_landingInFront,
-    ai_waiting
+    ai_waiting,
+    ai_tracking
 };
 
 
@@ -32,7 +33,7 @@ void createGrid(){
             grid[x][y] = 0;
             if (x == 21 || x == 0 || y == 0) { grid[x][y] = -1000.0; }
             if (y == 21){
-                grid[x][y] = 2000.0;
+                grid[x][y] = 10000.0;
             }
             
         }
@@ -78,6 +79,18 @@ void createGrid(){
     }
 }
 
+
+float gridValue(float x, float y)
+{
+    int x_0 = 10; //The peak's x-position
+    int y_0 = 20; //The peak's y-position
+    float y_v = 15; // The spread in y-direction
+    float x_v = 7; // The spread in x-direction
+    int amplitude = 100; // How "extreme" the values are
+    float value = amplitude*exp(-((pow(x - x_0, 2) / (2 * pow(x_v, 2))) - ((pow(y - y_0, 2)) / (2 * pow(y_v, 2)))));
+    return value;
+}
+
 int check_ifInArena(float x){
     if(x > 21){
         return 21;
@@ -106,23 +119,46 @@ float findRobotValue(float x_robot, float y_robot, float theta, int timeToTurn)
     float reward1 = 0;
     float reward2 = 0;
     Plank positions = createPlank(x_robot, y_robot, theta, timeToTurn);
+    // reward1 = gridValue(positions.x_f, abs(20-positions.y_f));
+    // reward2 = gridValue(positions.x_b, abs(20-positions.y_b));
     reward1 = GRID[(int)positions.x_f][(int)positions.y_f];
     reward2 = GRID[(int)positions.x_b][(int)positions.y_b];
 
-    if(reward1 == 2000 || reward1 == -1000 ){
+    //if(reward1 == gridValue(0,0) || reward1 == gridValue(20,20)){
+    if(reward1 == GRID[0][22] || reward1 == GRID[0][0]){
         return 2*reward1;
     }
-    else if(reward2 == 2000 || reward2 == -1000){
+    //else if(reward2 == gridValue(0,0) || reward2 == gridValue(20,20)){
+    if(reward1 == GRID[0][22] || reward1 == GRID[0][0]){
         return 2*reward2;
     }
     else{
-        return reward1+reward2;
+        return reward1-reward2;
     }
 
 }
 
+bool target_inActionRange(sim_Observed_State observed_state, int target){
+    float dx = observed_state.drone_x - observed_state.target_x[target];
+    float dy = observed_state.drone_y - observed_state.target_y[target];
+    if(sqrt(dx*dx + dy*dy) > Sim_Drone_Target_Proximity){
+        return true;
+    }
+    return false;
+}
+
+bool targetIsMoving(int target, sim_Observed_State previous_state, sim_Observed_State observed_state){
+    bool moving = true;
+    if (previous_state.target_x[target] == observed_state.target_x[target] && 
+        previous_state.target_y[target] == observed_state.target_y[target]) 
+    {
+        moving = false;
+    }
+    return moving;
+}
+
 //Pseudo ish kode
-int choose_target(sim_Observed_State state){
+int choose_target(sim_Observed_State observed_state, sim_Observed_State previous_state){
     int max_value = 0;
     int temp_value = 0;
     int target = 0;
@@ -139,8 +175,13 @@ int choose_target(sim_Observed_State state){
 
     // }
     for(int i = 0; i < Num_Targets; i++){
-        if(!state.target_removed[i]){
-            temp_value = GRID[(int)state.target_x[i]][(int)state.target_y[i]];
+        if(!observed_state.target_removed[i]){
+            if (!targetIsMoving(i, previous_state, observed_state))
+            {
+                std::cout << "Target not moving" << std::endl;
+                break;
+            }
+            temp_value = GRID[(int)observed_state.target_x[i]][(int)observed_state.target_y[i]];
 
             if(temp_value > max_value){
                 max_value = temp_value;
@@ -153,15 +194,18 @@ int choose_target(sim_Observed_State state){
 
 ai_State choose_action(sim_Observed_State state, int i){
     int rewardOnTop = findRobotValue(state.target_x[i], state.target_y[i],
-            state.target_q[i] + 0.785, (int)state.elapsed_time % 20); //0.785 radians is almost 45 degerees
+            wrap_angle(state.target_q[i] + 0.785), (int)state.elapsed_time % 20); //0.785 radians is almost 45 degerees
 
     int rewardInFront = findRobotValue(state.target_x[i], state.target_y[i],
-            state.target_q[i] + 3.14, (int)state.elapsed_time % 20);
+            wrap_angle(state.target_q[i] + 3.14), (int)state.elapsed_time % 20);
 
     int rewardForWait = findRobotValue(state.target_x[i], state.target_y[i],
             state.target_q[i], (int)state.elapsed_time % 20);
+    std::cout << "Reward in front " << rewardInFront << std::endl;
+    std::cout << "Reward on top " << rewardOnTop << std::endl;
+    std::cout << "Reward wait" << rewardOnTop << std::endl;
 
-    int max_reward = std::max(std::max(rewardOnTop, rewardInFront), rewardForWait);
+    int max_reward = std::max(std::max(rewardInFront,rewardOnTop), rewardForWait);
     if(max_reward == rewardForWait){
         return ai_waiting;
     }
@@ -185,36 +229,52 @@ int main()
 
     sim_State state;
     bool running = true;
+
     sim_Command cmd;
-    int target = 0;
+    sim_Observed_State observed_state;
+    sim_Observed_State previous_state;
+    int target = -1;
+    float last_action_time;
     while (running)
     {
         sim_recv_state(&state);
-        printf("Recv state %.2f\n", state.elapsed_time);
-        sim_Observed_State observed = sim_observe_state(state);
+        previous_state = observed_state;
+        sim_Observed_State observed_state = sim_observe_state(state);
 
-        if (state.drone.cmd_done)
+        if (observed_state.drone_cmd_done || ai_state == ai_tracking) //&& observed_state.elapsed_time - last_action_time >= 4.0)
         {
-            target = choose_target(observed);
+            last_action_time = observed_state.elapsed_time;
 
-            ai_state = choose_action(observed, target);
+            if(target == -1){
+                target = choose_target(observed_state, previous_state);
+                ai_state = ai_tracking;
+                cmd.type = sim_CommandType_Track;
+                cmd.i = target;
+                std::cout << "Tracking" << std::endl;
+            }
 
-            switch (ai_state)
-            {
-                case ai_landingOnTop:
-                    cmd.type = sim_CommandType_LandInFrontOf;
-                    cmd.i = target;
-                    sim_send_cmd(&cmd);
-                break;
-                case ai_landingInFront:
-                    cmd.type = sim_CommandType_LandOnTopOf;
-                    cmd.i = target;
-                    sim_send_cmd(&cmd);
-                break;
-                case ai_waiting:
-                    for(int i=0; i < 100000; i++){}
-                    std::cout << "WAITING" << std::endl;
-                break;
+            else if(target_inActionRange(observed_state, target)){
+                ai_state = choose_action(observed_state, target);
+            
+                switch (ai_state)
+                {
+                    case ai_landingOnTop:
+                        cmd.type = sim_CommandType_LandOnTopOf;
+                        cmd.i = target;
+                        std::cout << "Top" << std::endl;
+                        sim_send_cmd(&cmd);
+                    break;
+                    case ai_landingInFront:
+                        cmd.type = sim_CommandType_LandInFrontOf;
+                        cmd.i = target;
+                        std::cout << "Front" << std::endl;
+                        sim_send_cmd(&cmd);
+                    break;
+                    case ai_waiting:
+                        std::cout << "WAITING" << std::endl;
+                    break;
+                }
+                target = -1;
             }
         }
     }
