@@ -184,6 +184,9 @@ bool targetIsMoving(int target, sim_Observed_State previous_state, sim_Observed_
     {
         moving = false;
     }
+    if (observed_state.target_removed[target]) {
+        moving = true;
+    }
     return moving;
 }
 
@@ -209,7 +212,7 @@ int choose_target(sim_Observed_State observed_state, sim_Observed_State previous
             if (!targetIsMoving(i, previous_state, observed_state))
             {
                 std::cout << "Target not moving" << std::endl;
-                break;
+                continue;
             }
             Plank positions = createPlank(observed_state.target_x[i], observed_state.target_y[i],
             wrap_angle(observed_state.target_q[i] + 0.785), (int)observed_state.elapsed_time % 20);
@@ -287,7 +290,7 @@ int main()
                 std::cout << "Tracking" << std::endl;
             }
 
-            else if(target_inActionRange(observed_state, target) 
+            else if(target_inActionRange(observed_state, target) )
                     && targetIsMoving(target, previous_state, observed_state))
             {
                 ai_state = choose_action(observed_state, target);
