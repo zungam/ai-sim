@@ -290,7 +290,7 @@ int main()
                 std::cout << "Tracking" << std::endl;
             }
 
-            else if(target_inActionRange(observed_state, target) )
+            else if(target_inActionRange(observed_state, target)
                     && targetIsMoving(target, previous_state, observed_state))
             {
                 ai_state = choose_action(observed_state, target);
@@ -311,8 +311,8 @@ int main()
                     case ai_waiting:
                         std::cout << "WAITING" << std::endl;
                     break;
-                target = -1;
                 }
+            target = -1;
             }
         }
     }
