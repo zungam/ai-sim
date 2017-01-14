@@ -290,7 +290,7 @@ int main()
             else if(target_inActionRange(observed_state, target) 
                     && targetIsMoving(target, previous_state, observed_state))
             {
-                ai_state = choose_action(observed_state, previous_state, target);
+                ai_state = choose_action(observed_state, target);
                 switch (ai_state)
                 {
                     case ai_landingOnTop:
